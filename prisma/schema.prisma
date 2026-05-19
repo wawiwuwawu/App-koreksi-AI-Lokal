@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Assignment {
+  id             String   @id @default(cuid())
+  studentName    String
+  fileName       String
+  extractedText  String   @db.Text
+  score          Int?
+  feedback       String?  @db.Text
+  plagiarismNote String?  @db.Text
+  createdAt      DateTime @default(now())
+}
+
+model SystemConfig {
+  id         String   @id @default("default")
+  rubric     String   @db.Text
+  windowSize Int      @default(3)
+  updatedAt  DateTime @updatedAt
+}
