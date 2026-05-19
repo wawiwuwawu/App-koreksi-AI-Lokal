@@ -4,8 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { BookOpen, Users, FileText, ChevronRight, LogOut, Activity } from "lucide-react";
+import { BookOpen, Users, FileText, ChevronRight, LogOut, Plus, Trash2 } from "lucide-react";
 
 interface TaskSummary {
   id: string;
@@ -31,6 +34,24 @@ export default function DashboardPage() {
   const [courses, setCourses] = useState<CourseSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [healthStatus, setHealthStatus] = useState<"connected" | "disconnected" | "checking">("checking");
+
+  // Course Modal state
+  const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
+  const [courseCode, setCourseCode] = useState("");
+  const [courseName, setCourseName] = useState("");
+
+  // Class Modal state
+  const [isClassModalOpen, setIsClassModalOpen] = useState(false);
+  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [className, setClassName] = useState("");
+
+  // Task Modal state
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [taskCustomId, setTaskCustomId] = useState("");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskRubric, setTaskRubric] = useState("");
+  const [taskWindowSize, setTaskWindowSize] = useState("3");
 
   // Check auth and fetch user info
   const checkAuth = useCallback(async () => {
@@ -86,6 +107,117 @@ export default function DashboardPage() {
     }
   };
 
+  // Creation Handlers
+  const handleCreateCourse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!courseCode || !courseName) {
+      toast.error("Semua field wajib diisi");
+      return;
+    }
+    try {
+      const res = await fetch("/api/courses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: courseCode, name: courseName }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal membuat mata kuliah");
+      toast.success("Mata kuliah berhasil ditambahkan!");
+      setIsCourseModalOpen(false);
+      setCourseCode("");
+      setCourseName("");
+      fetchCourses();
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal membuat mata kuliah");
+    }
+  };
+
+  const handleCreateClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!className) {
+      toast.error("Nama kelas wajib diisi");
+      return;
+    }
+    try {
+      const res = await fetch("/api/classes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: className, courseId: selectedCourseId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal membuat kelas");
+      toast.success("Kelas berhasil ditambahkan!");
+      setIsClassModalOpen(false);
+      setClassName("");
+      fetchCourses();
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal membuat kelas");
+    }
+  };
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskTitle) {
+      toast.error("Judul tugas wajib diisi");
+      return;
+    }
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: taskCustomId,
+          title: taskTitle,
+          rubric: taskRubric,
+          windowSize: taskWindowSize,
+          classId: selectedClassId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal membuat tugas");
+      toast.success("Tugas berhasil ditambahkan!");
+      setIsTaskModalOpen(false);
+      setTaskCustomId("");
+      setTaskTitle("");
+      setTaskRubric("");
+      setTaskWindowSize("3");
+      fetchCourses();
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal membuat tugas");
+    }
+  };
+
+  // Deletion Handlers
+  const handleDeleteCourse = async (courseId: string) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus mata kuliah ini beserta seluruh kelas dan tugas di dalamnya?")) return;
+    try {
+      const res = await fetch(`/api/courses/${courseId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menghapus mata kuliah");
+      toast.success("Mata kuliah berhasil dihapus!");
+      fetchCourses();
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal menghapus mata kuliah");
+    }
+  };
+
+  const handleDeleteClass = async (classId: string) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus kelas ini beserta seluruh tugas di dalamnya?")) return;
+    try {
+      const res = await fetch(`/api/classes/${classId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menghapus kelas");
+      toast.success("Kelas berhasil dihapus!");
+      fetchCourses();
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal menghapus kelas");
+    }
+  };
+
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
@@ -128,7 +260,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-2">
-              <span className="text-zinc-550 text-xs">LM Studio:</span>
+              <span className="text-zinc-500 text-xs">LM Studio:</span>
               {healthStatus === "connected" ? (
                 <span className="inline-flex items-center gap-1 text-xs text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Connected
@@ -201,15 +333,23 @@ export default function DashboardPage() {
 
         {/* Courses Section */}
         <div className="space-y-6">
-          <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-            <span>Daftar Mata Kuliah Anda</span>
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              <span>Daftar Mata Kuliah Anda</span>
+            </h2>
+            <Button
+              onClick={() => setIsCourseModalOpen(true)}
+              className="bg-gradient-to-r from-emerald-500 to-teal-400 text-zinc-950 font-bold hover:from-emerald-400 hover:to-teal-300 transition-all duration-300 flex items-center gap-1.5 shadow-lg shadow-emerald-500/10 cursor-pointer"
+            >
+              <Plus className="h-4 w-4" /> Tambah Mata Kuliah
+            </Button>
+          </div>
 
           {courses.length === 0 ? (
             <div className="border border-dashed border-zinc-800 rounded-xl py-16 text-center text-zinc-500">
               <BookOpen className="h-12 w-12 mx-auto text-zinc-700 mb-3" />
               <p className="text-sm font-medium">Belum ada mata kuliah yang terdaftar.</p>
-              <p className="text-xs text-zinc-650 mt-1">Silakan hubungi administrator sistem.</p>
+              <p className="text-xs text-zinc-600 mt-1">Silakan tambahkan mata kuliah baru terlebih dahulu.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -219,12 +359,35 @@ export default function DashboardPage() {
                   className="border border-zinc-850 bg-zinc-950/40 hover:bg-zinc-900/20 transition-all duration-300 text-zinc-100 shadow-xl flex flex-col justify-between"
                 >
                   <CardHeader className="pb-4">
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-xs font-bold font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                        {course.code}
-                      </span>
-                      <span className="text-zinc-600 text-xs font-bold">•</span>
-                      <span className="text-zinc-400 text-xs font-medium">Lecturer Room</span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-xs font-bold font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                          {course.code}
+                        </span>
+                        <span className="text-zinc-650 text-xs font-bold">•</span>
+                        <span className="text-zinc-400 text-xs font-medium">Lecturer Room</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-1 cursor-pointer"
+                          onClick={() => {
+                            setSelectedCourseId(course.id);
+                            setIsClassModalOpen(true);
+                          }}
+                        >
+                          <Plus className="h-3 w-3" /> Kelas
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                          onClick={() => handleDeleteCourse(course.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
                     <CardTitle className="text-xl font-extrabold text-white mt-2 leading-snug">
                       {course.name}
@@ -243,8 +406,32 @@ export default function DashboardPage() {
                               className="bg-zinc-900/40 border border-zinc-850/60 p-3 rounded-lg flex flex-col gap-2"
                             >
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-bold text-zinc-300">{clazz.name}</span>
-                                <span className="text-[10px] text-zinc-500">{clazz.tasks.length} Tugas</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-zinc-300">{clazz.name}</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-5 w-5 p-0 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded cursor-pointer"
+                                    onClick={() => handleDeleteClass(clazz.id)}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-zinc-500">{clazz.tasks.length} Tugas</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-5 px-1.5 text-[10px] text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded flex items-center gap-0.5 cursor-pointer"
+                                    onClick={() => {
+                                      setSelectedClassId(clazz.id);
+                                      setTaskRubric("Kriteria Penilaian Tugas:\n1. Ketepatan logika (0-40)\n2. Kebersihan penulisan code/analisis (0-30)\n3. Penjelasan pengerjaan (0-30)\nTotal skor: 0-100");
+                                      setIsTaskModalOpen(true);
+                                    }}
+                                  >
+                                    <Plus className="h-2.5 w-2.5" /> Tugas
+                                  </Button>
+                                </div>
                               </div>
                               {clazz.tasks.length > 0 && (
                                 <div className="space-y-1.5 pl-1.5 border-l-2 border-emerald-500/30">
@@ -272,6 +459,137 @@ export default function DashboardPage() {
           )}
         </div>
       </main>
+
+      {/* Course Creation Modal */}
+      {isCourseModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md border border-zinc-800 bg-zinc-900/90 text-zinc-100 shadow-2xl relative">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 to-teal-450" />
+            <CardHeader>
+              <CardTitle className="text-lg font-bold text-white">Tambah Mata Kuliah</CardTitle>
+              <CardDescription className="text-zinc-400 text-xs">Buat mata kuliah baru di dashboard Anda</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateCourse} className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-xs text-zinc-400">Kode Mata Kuliah</Label>
+                  <Input
+                    placeholder="Contoh: IF101"
+                    value={courseCode}
+                    onChange={e => setCourseCode(e.target.value)}
+                    className="bg-zinc-950 border-zinc-800 text-zinc-150 focus-visible:ring-emerald-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-zinc-400">Nama Mata Kuliah</Label>
+                  <Input
+                    placeholder="Contoh: Dasar Pemrograman"
+                    value={courseName}
+                    onChange={e => setCourseName(e.target.value)}
+                    className="bg-zinc-950 border-zinc-800 text-zinc-150 focus-visible:ring-emerald-500"
+                  />
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button type="button" variant="ghost" className="hover:bg-zinc-800" onClick={() => setIsCourseModalOpen(false)}>Batal</Button>
+                  <Button type="submit" className="bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold">Simpan</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Class Creation Modal */}
+      {isClassModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md border border-zinc-800 bg-zinc-900/90 text-zinc-100 shadow-2xl relative">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 to-teal-450" />
+            <CardHeader>
+              <CardTitle className="text-lg font-bold text-white">Tambah Kelas Baru</CardTitle>
+              <CardDescription className="text-zinc-400 text-xs">Tambahkan kelas baru ke mata kuliah terpilih</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateClass} className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-xs text-zinc-400">Nama Kelas</Label>
+                  <Input
+                    placeholder="Contoh: IF-43-01"
+                    value={className}
+                    onChange={e => setClassName(e.target.value)}
+                    className="bg-zinc-950 border-zinc-800 text-zinc-150 focus-visible:ring-emerald-500"
+                  />
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button type="button" variant="ghost" className="hover:bg-zinc-800" onClick={() => setIsClassModalOpen(false)}>Batal</Button>
+                  <Button type="submit" className="bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold">Simpan</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Task Creation Modal */}
+      {isTaskModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-lg border border-zinc-800 bg-zinc-900/90 text-zinc-100 shadow-2xl relative">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 to-teal-450" />
+            <CardHeader>
+              <CardTitle className="text-lg font-bold text-white">Tambah Tugas Baru</CardTitle>
+              <CardDescription className="text-zinc-400 text-xs">Definisikan tugas beserta rubrik penilaiannya</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateTask} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-zinc-400">ID Tugas (Opsional)</Label>
+                    <Input
+                      placeholder="Contoh: TASK-003"
+                      value={taskCustomId}
+                      onChange={e => setTaskCustomId(e.target.value)}
+                      className="bg-zinc-950 border-zinc-800 text-zinc-150 focus-visible:ring-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-zinc-400">Ukuran Window Pembanding (Plagiarisme)</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={taskWindowSize}
+                      onChange={e => setTaskWindowSize(e.target.value)}
+                      className="bg-zinc-950 border-zinc-800 text-zinc-150 focus-visible:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-zinc-400">Judul Tugas</Label>
+                  <Input
+                    placeholder="Contoh: Tugas 3: Looping & Array"
+                    value={taskTitle}
+                    onChange={e => setTaskTitle(e.target.value)}
+                    className="bg-zinc-950 border-zinc-800 text-zinc-150 focus-visible:ring-emerald-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-zinc-400">Rubrik Penilaian AI</Label>
+                  <Textarea
+                    placeholder="Kriteria Penilaian Tugas..."
+                    value={taskRubric}
+                    onChange={e => setTaskRubric(e.target.value)}
+                    rows={6}
+                    className="bg-zinc-950 border-zinc-800 text-zinc-150 focus-visible:ring-emerald-500 font-mono text-xs"
+                  />
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button type="button" variant="ghost" className="hover:bg-zinc-800" onClick={() => setIsTaskModalOpen(false)}>Batal</Button>
+                  <Button type="submit" className="bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold">Simpan</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
