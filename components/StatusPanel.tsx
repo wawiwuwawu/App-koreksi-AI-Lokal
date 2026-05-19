@@ -12,9 +12,17 @@ interface StatusPanelProps {
   assignments: AssignmentRecord[];
   onRefresh: () => void;
   isLoading: boolean;
+  taskId?: string;
+  webhookSecret?: string;
 }
 
-export default function StatusPanel({ assignments, onRefresh, isLoading }: StatusPanelProps) {
+export default function StatusPanel({
+  assignments,
+  onRefresh,
+  isLoading,
+  taskId = "",
+  webhookSecret = "",
+}: StatusPanelProps) {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [showScript, setShowScript] = useState(false);
@@ -45,12 +53,18 @@ export default function StatusPanel({ assignments, onRefresh, isLoading }: Statu
   const appsScriptTemplate = `function onFormSubmit(e) {
   var payload = e.namedValues;
   
+  // Set ID Tugas secara otomatis
+  payload["id_tugas"] = ["${taskId || "ID_TUGAS_ANDA"}"];
+  
   // URL endpoint webhook aplikasi Next.js Anda
   var webhookUrl = "${webhookUrl || "http://localhost:3000/api/webhook"}";
   
   var options = {
     method: "post",
     contentType: "application/json",
+    headers: {
+      "X-Webhook-Secret": "${webhookSecret || "TOKEN_SECRET_ANDA"}"
+    },
     payload: JSON.stringify(payload)
   };
   
@@ -78,7 +92,7 @@ export default function StatusPanel({ assignments, onRefresh, isLoading }: Statu
             onClick={onRefresh}
             disabled={isLoading}
             variant="outline"
-            className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+            className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white cursor-pointer"
           >
             {isLoading ? "Menyegarkan..." : "Refresh Data"}
           </Button>
@@ -97,7 +111,7 @@ export default function StatusPanel({ assignments, onRefresh, isLoading }: Statu
             <Button
               onClick={copyToClipboard}
               variant="outline"
-              className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+              className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 cursor-pointer"
             >
               {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Clipboard className="h-4 w-4" />}
             </Button>
@@ -107,23 +121,23 @@ export default function StatusPanel({ assignments, onRefresh, isLoading }: Statu
         {/* Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-4 flex flex-col justify-between">
-            <span className="text-zinc-500 text-xs font-medium">Total Masuk</span>
+            <span className="text-zinc-550 text-xs font-medium">Total Masuk</span>
             <span className="text-3xl font-extrabold text-white mt-2">{total}</span>
           </div>
           <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-4 flex flex-col justify-between">
-            <span className="text-zinc-500 text-xs font-medium">Menunggu</span>
+            <span className="text-zinc-550 text-xs font-medium">Menunggu</span>
             <span className="text-3xl font-extrabold text-zinc-400 mt-2">{pending}</span>
           </div>
           <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-4 flex flex-col justify-between">
-            <span className="text-zinc-500 text-xs font-medium">Diproses</span>
+            <span className="text-zinc-550 text-xs font-medium">Diproses</span>
             <span className="text-3xl font-extrabold text-blue-400 mt-2">{processing}</span>
           </div>
           <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-4 flex flex-col justify-between">
-            <span className="text-zinc-500 text-xs font-medium">Selesai</span>
+            <span className="text-zinc-550 text-xs font-medium">Selesai</span>
             <span className="text-3xl font-extrabold text-emerald-400 mt-2">{done}</span>
           </div>
           <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-4 flex flex-col justify-between col-span-2 sm:col-span-1">
-            <span className="text-zinc-500 text-xs font-medium">Gagal</span>
+            <span className="text-zinc-550 text-xs font-medium">Gagal</span>
             <span className="text-3xl font-extrabold text-rose-500 mt-2">{failed}</span>
           </div>
         </div>
@@ -132,7 +146,7 @@ export default function StatusPanel({ assignments, onRefresh, isLoading }: Statu
         <div className="border border-zinc-800/60 rounded-lg overflow-hidden bg-zinc-900/20">
           <button
             onClick={() => setShowScript(!showScript)}
-            className="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-900/50 transition-colors"
+            className="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-900/50 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-2 font-medium">
               <Code className="h-4 w-4 text-zinc-400" />

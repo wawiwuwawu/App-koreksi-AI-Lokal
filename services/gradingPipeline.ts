@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { ParsedSubmission } from "@/types";
 import {
   downloadFileFromGoogleDrive,
   processPDF,
@@ -10,13 +9,14 @@ import { evaluateAssignment } from "./aiService";
 /**
  * Orchestrates the full AI grading workflow:
  * 1. Mark status as "processing"
- * 2. Download from Google Drive (public links)
- * 3. Extract text & render visual pages to images in one pass
- * 4. Fetch previous grades (sliding window)
- * 5. Query multimodal LLM
- * 6. Write results (score, feedback, plagiarism analysis) to database
+ * 2. Fetch Task and Rubric details
+ * 3. Download PDF from Google Drive
+ * 4. Extract text and render pages to images in one pass
+ * 5. Fetch previous grades for the same task (sliding window)
+ * 6. Query local multimodal LLM
+ * 7. Write results (score, feedback, plagiarism analysis) to database
  */
-export async function processSubmission(assignmentId: string, submission: ParsedSubmission) {
+export async function processSubmission(assignmentId: string) {
   try {
     // 1. Mark the assignment status as processing
     await prisma.assignment.update({
@@ -24,50 +24,55 @@ export async function processSubmission(assignmentId: string, submission: Parsed
       data: { status: "processing" },
     });
 
-    // 2. Fetch System Rubric & Window Size
-    const config = await prisma.systemConfig.findUnique({
-      where: { id: "default" },
+    // 2. Fetch Assignment and Task Details
+    const assignment = await prisma.assignment.findUnique({
+      where: { id: assignmentId },
+      include: {
+        task: true,
+      },
     });
 
-    const rubric =
-      config?.rubric ||
-      `Kriteria Penilaian Laporan:
-1. Kesesuaian dengan topik (0-25)
-2. Kedalaman analisis (0-25)
-3. Struktur dan tata bahasa (0-25)
-4. Orisinalitas dan referensi (0-25)
-Total skor: 0-100`;
-    const windowSize = config?.windowSize ?? 3;
+    if (!assignment || !assignment.task) {
+      throw new Error(`Assignment or Task not found for ID: ${assignmentId}`);
+    }
+
+    const { driveFileUrl, studentName, taskId } = assignment;
+    if (!driveFileUrl) {
+      throw new Error(`No Drive File URL provided for student: ${studentName}`);
+    }
+
+    const rubric = assignment.task.rubric;
+    const windowSize = assignment.task.windowSize;
 
     // 3. Download Google Drive File
     console.log(
-      `[GradingPipeline] Downloading file for ${submission.studentName} from: ${submission.driveFileUrl}`
+      `[GradingPipeline] Downloading file for ${studentName} from: ${driveFileUrl}`
     );
-    const pdfBuffer = await downloadFileFromGoogleDrive(submission.driveFileUrl);
+    const pdfBuffer = await downloadFileFromGoogleDrive(driveFileUrl);
 
     // 4. Process PDF text and screenshots in one pass
     console.log(`[GradingPipeline] Extracting text and rendering screenshots...`);
     const { extractedText, base64Images } = await processPDF(pdfBuffer);
 
-    // 6. Retrieve Memory sliding window context
+    // 5. Retrieve Memory sliding window context
     console.log(
-      `[GradingPipeline] Fetching sliding window context (size: ${windowSize})...`
+      `[GradingPipeline] Fetching sliding window context (size: ${windowSize}, taskId: ${taskId})...`
     );
-    const memoryContext = await getSlidingWindowContext(windowSize);
+    const memoryContext = await getSlidingWindowContext(windowSize, taskId);
 
-    // 7. Request Grading and Plagiarism Check from AI
+    // 6. Request Grading and Plagiarism Check from AI
     console.log(`[GradingPipeline] Sending query to local LLM...`);
     const result = await evaluateAssignment({
-      studentName: submission.studentName,
+      studentName,
       extractedText,
       base64Images,
       memoryContext,
       rubric,
     });
 
-    // 8. Update DB with success outcomes
+    // 7. Update DB with success outcomes
     console.log(
-      `[GradingPipeline] Process complete. Student: ${submission.studentName}, Score: ${result.score}`
+      `[GradingPipeline] Process complete. Student: ${studentName}, Score: ${result.score}`
     );
     await prisma.assignment.update({
       where: { id: assignmentId },
@@ -81,7 +86,7 @@ Total skor: 0-100`;
     });
   } catch (error: any) {
     console.error(
-      `[GradingPipeline] Failure processing submission for ${submission.studentName}:`,
+      `[GradingPipeline] Failure processing submission:`,
       error
     );
 

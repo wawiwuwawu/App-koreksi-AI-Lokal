@@ -1,115 +1,111 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import StatusPanel from "@/components/StatusPanel";
-import ResultsTable from "@/components/ResultsTable";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { AssignmentRecord } from "@/types";
-import { Settings } from "lucide-react";
+import { BookOpen, Users, FileText, ChevronRight, LogOut, Activity } from "lucide-react";
+
+interface TaskSummary {
+  id: string;
+  title: string;
+}
+
+interface ClassSummary {
+  id: string;
+  name: string;
+  tasks: TaskSummary[];
+}
+
+interface CourseSummary {
+  id: string;
+  code: string;
+  name: string;
+  classes: ClassSummary[];
+}
 
 export default function DashboardPage() {
-  const [assignments, setAssignments] = useState<AssignmentRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [rubric, setRubric] = useState("");
-  const [windowSize, setWindowSize] = useState(3);
-  const [isSavingConfig, setIsSavingConfig] = useState(false);
-  const [healthStatus, setHealthStatus] = useState<"connected" | "disconnected" | "checking">(
-    "checking"
-  );
-  const [healthError, setHealthError] = useState<string | null>(null);
+  const router = useRouter();
+  const [lecturer, setLecturer] = useState<{ name: string; email: string } | null>(null);
+  const [courses, setCourses] = useState<CourseSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [healthStatus, setHealthStatus] = useState<"connected" | "disconnected" | "checking">("checking");
 
-  // Fetch all graded assignments and pending queue
-  const fetchAssignments = useCallback(async () => {
-    setIsLoading(true);
+  // Check auth and fetch user info
+  const checkAuth = useCallback(async () => {
     try {
-      const res = await fetch("/api/assignments");
-      if (!res.ok) throw new Error("Gagal mengambil data tugas.");
+      const res = await fetch("/api/auth/me");
+      if (!res.ok) {
+        router.push("/login");
+        return;
+      }
       const data = await res.json();
-      setAssignments(data);
+      setLecturer(data.lecturer);
+      fetchCourses();
+      fetchHealth();
+    } catch (err) {
+      router.push("/login");
+    }
+  }, [router]);
+
+  // Fetch courses managed by logged lecturer
+  const fetchCourses = async () => {
+    try {
+      const res = await fetch("/api/courses");
+      if (!res.ok) throw new Error("Gagal mengambil data mata kuliah.");
+      const data = await res.json();
+      setCourses(data.courses);
     } catch (err: any) {
-      toast.error(err?.message || "Gagal menyinkronkan data.");
+      toast.error(err?.message || "Gagal memuat mata kuliah.");
     } finally {
       setIsLoading(false);
     }
-  }, []);
-
-  // Fetch system configurations (rubric & memory limits)
-  const fetchConfig = useCallback(async () => {
-    try {
-      const res = await fetch("/api/config");
-      if (!res.ok) throw new Error("Gagal mengambil konfigurasi.");
-      const data = await res.json();
-      setRubric(data.rubric || "");
-      setWindowSize(data.windowSize ?? 3);
-    } catch (err: any) {
-      console.error("Failed to load config:", err);
-    }
-  }, []);
+  };
 
   // Fetch LM Studio health status
-  const fetchHealth = useCallback(async () => {
+  const fetchHealth = async () => {
     try {
       const res = await fetch("/api/health");
       if (!res.ok) throw new Error();
       const data = await res.json();
       setHealthStatus(data.status);
-      setHealthError(data.error || null);
     } catch (err) {
       setHealthStatus("disconnected");
-      setHealthError("Gagal menghubungi endpoint health.");
-    }
-  }, []);
-
-  // Save updated configurations
-  const handleSaveConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSavingConfig(true);
-    try {
-      const res = await fetch("/api/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rubric, windowSize }),
-      });
-      if (!res.ok) throw new Error("Gagal menyimpan konfigurasi.");
-      toast.success("Konfigurasi sistem berhasil diperbarui!");
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal menyimpan konfigurasi.");
-    } finally {
-      setIsSavingConfig(false);
     }
   };
 
-  // Initial data loading
-  useEffect(() => {
-    fetchAssignments();
-    fetchConfig();
-    fetchHealth();
-  }, [fetchAssignments, fetchConfig, fetchHealth]);
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      toast.success("Logout berhasil");
+      router.push("/login");
+      router.refresh();
+    } catch (err) {
+      toast.error("Gagal logout.");
+    }
+  };
 
-  // Autopoll every 4-10 seconds for tasks, and every 15 seconds for health status
   useEffect(() => {
-    const hasActiveJobs = assignments.some(
-      (a) => a.status === "pending" || a.status === "processing"
+    checkAuth();
+  }, [checkAuth]);
+
+  // Count helper functions
+  const totalClasses = courses.reduce((acc, course) => acc + course.classes.length, 0);
+  const totalTasks = courses.reduce((acc, course) => 
+    acc + course.classes.reduce((sum, c) => sum + c.tasks.length, 0), 0
+  );
+
+  if (isLoading || !lecturer) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center font-sans">
+        <div className="text-center space-y-4">
+          <div className="h-10 w-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-zinc-400 font-medium">Memuat dashboard...</p>
+        </div>
+      </div>
     );
-
-    const interval = setInterval(() => {
-      fetchAssignments();
-    }, hasActiveJobs ? 4000 : 10000);
-
-    const healthInterval = setInterval(() => {
-      fetchHealth();
-    }, 15000);
-
-    return () => {
-      clearInterval(interval);
-      clearInterval(healthInterval);
-    };
-  }, [assignments, fetchAssignments, fetchHealth]);
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-250">
@@ -130,108 +126,150 @@ export default function DashboardPage() {
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-zinc-550 text-xs">LM Studio Status:</span>
-            {healthStatus === "connected" ? (
-              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Terhubung
-              </span>
-            ) : healthStatus === "checking" ? (
-              <span className="inline-flex items-center gap-1.5 text-xs text-yellow-500 font-medium bg-yellow-500/10 px-2.5 py-1 rounded-full border border-yellow-500/20 animate-pulse">
-                <span className="h-2 w-2 rounded-full bg-yellow-550 animate-pulse" /> Memeriksa...
-              </span>
-            ) : (
-              <span
-                title={healthError || undefined}
-                className="inline-flex items-center gap-1.5 text-xs text-rose-500 font-medium bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20 cursor-help"
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-zinc-550 text-xs">LM Studio:</span>
+              {healthStatus === "connected" ? (
+                <span className="inline-flex items-center gap-1 text-xs text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Connected
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs text-rose-500 font-medium bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                  <span className="h-1.5 w-1.5 rounded-full bg-rose-500" /> Disconnected
+                </span>
+              )}
+            </div>
+            <div className="text-sm text-zinc-300 font-medium border-l border-zinc-800 pl-4 flex items-center gap-2">
+              <span>{lecturer.name}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-full cursor-pointer"
+                onClick={handleLogout}
               >
-                <span className="h-2 w-2 rounded-full bg-rose-500" /> Terputus
-              </span>
-            )}
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column (Forms & Control Panel) */}
-          <div className="lg:col-span-1 space-y-8">
-            <StatusPanel
-              assignments={assignments}
-              onRefresh={fetchAssignments}
-              isLoading={isLoading}
-            />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+        {/* Intro */}
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 to-teal-200 bg-clip-text text-transparent">
+            Selamat Datang, {lecturer.name}
+          </h1>
+          <p className="text-zinc-400 text-sm mt-1">
+            Kelola koreksi tugas mahasiswa untuk seluruh kelas dan mata kuliah Anda secara terpusat.
+          </p>
+        </div>
 
-            <Card className="border border-zinc-800 bg-zinc-950/80 backdrop-blur-md shadow-2xl text-zinc-100 relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 to-transparent pointer-events-none" />
-              <CardHeader className="relative pb-4">
-                <CardTitle className="text-lg font-bold flex items-center gap-2">
-                  <Settings className="h-5 w-5 text-zinc-400" />
-                  <span>Pengaturan Rubrik & AI</span>
-                </CardTitle>
-                <CardDescription className="text-zinc-400">
-                  Ubah kriteria rubrik penilaian dan jumlah memori pembanding plagiarisme.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="relative">
-                <form onSubmit={handleSaveConfig} className="space-y-4">
-                  {/* Sliding Window Size */}
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="window-size"
-                      className="text-xs font-semibold text-zinc-400 uppercase tracking-wider"
-                    >
-                      Ukuran Window Memori (Tugas Pembanding)
-                    </Label>
-                    <Input
-                      id="window-size"
-                      type="number"
-                      min={0}
-                      max={10}
-                      value={windowSize}
-                      onChange={(e) => setWindowSize(parseInt(e.target.value, 10) || 0)}
-                      className="bg-zinc-900 border-zinc-800 text-zinc-100 font-mono text-sm focus-visible:ring-emerald-500"
-                    />
-                    <p className="text-[11px] text-zinc-500 leading-relaxed">
-                      Menentukan jumlah tugas mahasiswa sebelumnya yang akan dikirimkan ke AI sebagai konteks memori pembanding (plagiarisme).
-                    </p>
-                  </div>
+        {/* Info Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <Card className="border border-zinc-900 bg-zinc-900/20 backdrop-blur-md text-zinc-100 flex items-center p-6 gap-4">
+            <div className="h-12 w-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 border border-indigo-500/20 shadow-md">
+              <BookOpen className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Mata Kuliah</p>
+              <p className="text-2xl font-black mt-0.5 text-white">{courses.length}</p>
+            </div>
+          </Card>
 
-                  {/* Rubric Input */}
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="rubric"
-                      className="text-xs font-semibold text-zinc-400 uppercase tracking-wider"
-                    >
-                      Rubrik Penilaian Laporan
-                    </Label>
-                    <Textarea
-                      id="rubric"
-                      rows={8}
-                      value={rubric}
-                      onChange={(e) => setRubric(e.target.value)}
-                      className="bg-zinc-900 border-zinc-800 text-zinc-100 text-sm font-mono leading-relaxed focus-visible:ring-emerald-500"
-                      placeholder="Masukkan detail rubrik..."
-                    />
-                  </div>
+          <Card className="border border-zinc-900 bg-zinc-900/20 backdrop-blur-md text-zinc-100 flex items-center p-6 gap-4">
+            <div className="h-12 w-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20 shadow-md">
+              <Users className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Total Kelas</p>
+              <p className="text-2xl font-black mt-0.5 text-white">{totalClasses}</p>
+            </div>
+          </Card>
 
-                  <Button
-                    type="submit"
-                    disabled={isSavingConfig}
-                    className="w-full bg-emerald-500 text-zinc-950 font-bold hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/10 cursor-pointer"
-                  >
-                    {isSavingConfig ? "Menyimpan..." : "Simpan Perubahan"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </div>
+          <Card className="border border-zinc-900 bg-zinc-900/20 backdrop-blur-md text-zinc-100 flex items-center p-6 gap-4">
+            <div className="h-12 w-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 border border-amber-500/20 shadow-md">
+              <FileText className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Total Tugas Aktif</p>
+              <p className="text-2xl font-black mt-0.5 text-white">{totalTasks}</p>
+            </div>
+          </Card>
+        </div>
 
-          {/* Right Column (Submissions Table) */}
-          <div className="lg:col-span-2">
-            <ResultsTable assignments={assignments} />
-          </div>
+        {/* Courses Section */}
+        <div className="space-y-6">
+          <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+            <span>Daftar Mata Kuliah Anda</span>
+          </h2>
+
+          {courses.length === 0 ? (
+            <div className="border border-dashed border-zinc-800 rounded-xl py-16 text-center text-zinc-500">
+              <BookOpen className="h-12 w-12 mx-auto text-zinc-700 mb-3" />
+              <p className="text-sm font-medium">Belum ada mata kuliah yang terdaftar.</p>
+              <p className="text-xs text-zinc-650 mt-1">Silakan hubungi administrator sistem.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {courses.map((course) => (
+                <Card
+                  key={course.id}
+                  className="border border-zinc-850 bg-zinc-950/40 hover:bg-zinc-900/20 transition-all duration-300 text-zinc-100 shadow-xl flex flex-col justify-between"
+                >
+                  <CardHeader className="pb-4">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xs font-bold font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        {course.code}
+                      </span>
+                      <span className="text-zinc-600 text-xs font-bold">•</span>
+                      <span className="text-zinc-400 text-xs font-medium">Lecturer Room</span>
+                    </div>
+                    <CardTitle className="text-xl font-extrabold text-white mt-2 leading-snug">
+                      {course.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 pt-0">
+                    <div className="border-t border-zinc-900 pt-4 space-y-3">
+                      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Kelas & Tugas Aktif:</p>
+                      {course.classes.length === 0 ? (
+                        <p className="text-xs text-zinc-600 italic">Belum ada kelas terdaftar</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {course.classes.map((clazz) => (
+                            <div
+                              key={clazz.id}
+                              className="bg-zinc-900/40 border border-zinc-850/60 p-3 rounded-lg flex flex-col gap-2"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-zinc-300">{clazz.name}</span>
+                                <span className="text-[10px] text-zinc-500">{clazz.tasks.length} Tugas</span>
+                              </div>
+                              {clazz.tasks.length > 0 && (
+                                <div className="space-y-1.5 pl-1.5 border-l-2 border-emerald-500/30">
+                                  {clazz.tasks.map((task) => (
+                                    <button
+                                      key={task.id}
+                                      onClick={() => router.push(`/tasks/${task.id}`)}
+                                      className="w-full flex items-center justify-between text-xs text-zinc-400 hover:text-emerald-400 transition-colors text-left group"
+                                    >
+                                      <span className="truncate pr-2">{task.title}</span>
+                                      <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-0 group-hover:opacity-100 transition-all text-emerald-400" />
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </main>
     </div>

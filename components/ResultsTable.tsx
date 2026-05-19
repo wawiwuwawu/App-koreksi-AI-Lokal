@@ -7,12 +7,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { AssignmentRecord } from "@/types";
 import { ExternalLink, Eye, AlertTriangle, X, HelpCircle } from "lucide-react";
+import { toast } from "sonner";
 
 interface ResultsTableProps {
   assignments: AssignmentRecord[];
+  onRefresh?: () => void;
 }
 
-export default function ResultsTable({ assignments }: ResultsTableProps) {
+export default function ResultsTable({ assignments, onRefresh }: ResultsTableProps) {
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentRecord | null>(null);
 
   const getStatusBadge = (status: string) => {
@@ -226,10 +228,50 @@ export default function ResultsTable({ assignments }: ResultsTableProps) {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-zinc-800 bg-zinc-900/20 flex justify-end">
+            <div className="p-4 border-t border-zinc-800 bg-zinc-900/20 flex justify-between items-center">
+              <div className="flex gap-2">
+                {(selectedAssignment.status === "failed" || selectedAssignment.status === "done") && (
+                  <Button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch(`/api/assignments/${selectedAssignment.id}/retry`, { method: "POST" });
+                        if (!res.ok) throw new Error("Gagal mengantrekan kembali tugas");
+                        if (onRefresh) onRefresh();
+                        setSelectedAssignment(null);
+                        toast.success("Tugas berhasil dimasukkan ke antrean kembali!");
+                      } catch (err: any) {
+                        toast.error(err?.message || "Gagal re-grade.");
+                      }
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white border-0 text-xs py-1 cursor-pointer"
+                    size="sm"
+                  >
+                    Koreksi Ulang
+                  </Button>
+                )}
+                <Button
+                  onClick={async () => {
+                    if (confirm("Apakah Anda yakin ingin menghapus hasil penilaian ini?")) {
+                      try {
+                        const res = await fetch(`/api/assignments/${selectedAssignment.id}`, { method: "DELETE" });
+                        if (!res.ok) throw new Error("Gagal menghapus tugas");
+                        if (onRefresh) onRefresh();
+                        setSelectedAssignment(null);
+                        toast.success("Tugas berhasil dihapus.");
+                      } catch (err: any) {
+                        toast.error(err?.message || "Gagal menghapus.");
+                      }
+                    }
+                  }}
+                  className="bg-rose-950 hover:bg-rose-900 text-rose-200 border border-rose-800 text-xs py-1 cursor-pointer"
+                  size="sm"
+                >
+                  Hapus
+                </Button>
+              </div>
               <Button
                 onClick={() => setSelectedAssignment(null)}
-                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700"
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 cursor-pointer"
               >
                 Tutup
               </Button>

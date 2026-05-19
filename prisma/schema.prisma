@@ -7,6 +7,45 @@ datasource db {
   provider = "postgresql"
 }
 
+model Lecturer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String   // Hashed password
+  courses   Course[]
+  createdAt DateTime @default(now())
+}
+
+model Course {
+  id          String   @id @default(cuid())
+  code        String   // e.g. IF101
+  name        String   // e.g. Dasar Pemrograman
+  lecturerId  String
+  lecturer    Lecturer @relation(fields: [lecturerId], references: [id], onDelete: Cascade)
+  classes     Class[]
+  createdAt   DateTime @default(now())
+}
+
+model Class {
+  id        String   @id @default(cuid())
+  name      String   // e.g. IF-43-01
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+  createdAt DateTime @default(now())
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  title       String       // e.g. Tugas 1: Algoritma
+  rubric      String       @db.Text
+  windowSize  Int          @default(3)
+  classId     String
+  class       Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  assignments Assignment[]
+  createdAt   DateTime     @default(now())
+}
+
 model Assignment {
   id             String   @id @default(cuid())
   studentName    String
@@ -15,10 +54,11 @@ model Assignment {
   score          Int?
   feedback       String?  @db.Text
   plagiarismNote String?  @db.Text
-  taskId         String?
   driveFileUrl   String?
-  status         String   @default("pending")
+  status         String   @default("pending") // pending | processing | done | failed
   errorMessage   String?  @db.Text
+  taskId         String
+  task           Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
 }
 

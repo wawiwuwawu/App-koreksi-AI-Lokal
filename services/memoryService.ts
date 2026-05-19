@@ -4,12 +4,13 @@ import { prisma } from "@/lib/db";
  * Fetches the last N assignments that have been successfully graded (status: "done")
  * and formats them into a comparison context string for plagiarism detection.
  */
-export async function getSlidingWindowContext(limit: number): Promise<string> {
+export async function getSlidingWindowContext(limit: number, taskId: string): Promise<string> {
   if (limit <= 0) return "";
 
   try {
     const assignments = await prisma.assignment.findMany({
       where: {
+        taskId,
         status: "done",
         score: { not: null },
       },

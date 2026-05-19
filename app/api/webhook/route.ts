@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { ParsedSubmission, WebhookPayload } from "@/types";
-import { processSubmission } from "@/services/gradingPipeline";
+import { WebhookPayload } from "@/types";
+import { queueService } from "@/services/queueService";
 
 export async function POST(req: NextRequest) {
   // 1. Authenticate webhook request via secret token if configured
@@ -47,11 +47,10 @@ export async function POST(req: NextRequest) {
 
   const studentName = studentNameArray[0]?.trim();
   const driveFileUrl = driveLinkArray[0]?.trim();
-  const timestamp = timestampArray[0]?.trim();
   const taskId =
     taskIdArray && Array.isArray(taskIdArray) && taskIdArray[0]
       ? taskIdArray[0].trim()
-      : "DEFAULT-TASK";
+      : null;
 
   if (!studentName || !driveFileUrl) {
     return NextResponse.json(
@@ -60,19 +59,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const parsedSubmission: ParsedSubmission = {
-    timestamp,
-    studentName,
-    driveFileUrl,
-    taskId,
-  };
-
-  // Generate a display name for the file
-  const safeName = studentName.replace(/[^a-zA-Z0-9]/g, "_");
-  const fileName = `${safeName}_${taskId}.pdf`;
+  if (!taskId) {
+    return NextResponse.json(
+      { error: "ID Tugas (id_tugas) is missing in payload" },
+      { status: 400 }
+    );
+  }
 
   try {
-    // 2. Prevent duplicate entries for the same student + taskId
+    // 2. Validate that Task exists in the system
+    const taskExists = await prisma.task.findUnique({
+      where: { id: taskId },
+    });
+
+    if (!taskExists) {
+      console.warn(`[Webhook] Rejected submission: Task ID ${taskId} does not exist.`);
+      return NextResponse.json(
+        { error: `Tugas dengan ID ${taskId} tidak terdaftar di sistem` },
+        { status: 400 }
+      );
+    }
+
+    // 3. Prevent duplicate entries for the same student + taskId
     const existingAssignment = await prisma.assignment.findFirst({
       where: {
         studentName,
@@ -92,7 +100,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 3. Create a database record in pending state
+    // Generate a display name for the file
+    const safeName = studentName.replace(/[^a-zA-Z0-9]/g, "_");
+    const fileName = `${safeName}_${taskId}.pdf`;
+
+    // 4. Create a database record in pending state
     const newAssignment = await prisma.assignment.create({
       data: {
         studentName,
@@ -104,23 +116,17 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 4. Fire grading pipeline asynchronously in background to prevent webhook timeout
-    processSubmission(newAssignment.id, parsedSubmission)
-      .then(() => {
-        console.log(`[Webhook] Background grading finished successfully for ${studentName}`);
-      })
-      .catch((err) => {
-        console.error(`[Webhook] Background grading crashed for ${studentName}:`, err);
-      });
+    // 5. Enqueue the assignment for sequential AI grading
+    queueService.enqueue(newAssignment.id);
 
-    // 5. Immediately return status 200 with queue confirmation
+    // 6. Immediately return status 200 with queue confirmation
     return NextResponse.json({
       success: true,
       message: "Submission received and queued for grading",
       assignmentId: newAssignment.id,
     });
   } catch (error: any) {
-    console.error("[Webhook] Failed to initialize entry in DB:", error);
+    console.error("[Webhook] Failed to process submission:", error);
     return NextResponse.json(
       { error: "Database operation failed", details: error?.message || String(error) },
       { status: 500 }
