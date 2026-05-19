@@ -45,23 +45,28 @@ COPY --from=builder /app/public ./public
 # 3. Salin folder prisma, skema, dan migrasi untuk keperluan runtime migration
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/generated ./generated
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/package-lock.json ./package-lock.json
 
-# 4. Salin & siapkan script entrypoint
+# 4. Install Prisma CLI untuk runtime migration (dan tsx/dotenv jika ingin seed manual)
+RUN npm install --no-save prisma@7 tsx dotenv
+
+# 5. Salin & siapkan script entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
-# 5. Ubah kepemilikan direktori kerja ke user non-root
+# 6. Ubah kepemilikan direktori kerja ke user non-root
 RUN chown -R nextjs:nodejs /app
 
-# 6. Pindah ke user non-root untuk menjalankan kontainer
+# 7. Pindah ke user non-root untuk menjalankan kontainer
 USER nextjs
 
 # Expose port Next.js
 EXPOSE 3000
 
-# 7. Healthcheck end-to-end yang memeriksa status Next.js dan Database via endpoint /api/config
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+# 8. Healthcheck end-to-end yang memeriksa status Next.js dan Database via endpoint /api/config
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/api/config', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
