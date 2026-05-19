@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gradely}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gradely_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-grading_app}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gradely} -d ${POSTGRES_DB:-grading_app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://gradely:gradely_secret@db:5432/grading_app?schema=public}
+      LM_STUDIO_URL: ${LM_STUDIO_URL:-http://host.docker.internal:1234/v1}
+      LM_STUDIO_MODEL: ${LM_STUDIO_MODEL:-google/gemma-2-9b-it}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
