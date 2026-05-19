@@ -15,6 +15,10 @@ model Assignment {
   score          Int?
   feedback       String?  @db.Text
   plagiarismNote String?  @db.Text
+  taskId         String?
+  driveFileUrl   String?
+  status         String   @default("pending")
+  errorMessage   String?  @db.Text
   createdAt      DateTime @default(now())
 }
 
