@@ -1,15 +1,6 @@
 import OpenAI from "openai";
 import { AIGradingResult } from "@/types";
 
-const baseURL = process.env.LM_STUDIO_URL || "http://localhost:1234/v1";
-const modelName = process.env.LM_STUDIO_MODEL || "google/gemma-4-e2b";
-
-// Initialize OpenAI client configured for LM Studio
-const openai = new OpenAI({
-  apiKey: "not-needed-for-local-lm-studio",
-  baseURL,
-});
-
 /**
  * Clean and strip any markdown syntax wrappers (e.g. ```json ... ```)
  * from the local LLM response before parsing.
@@ -31,6 +22,47 @@ interface EvaluateParams {
   rubric: string;
 }
 
+// Custom type matching OpenAI's ChatCompletionContentPart definition structurally without using `any`
+interface TextContentPart {
+  type: "text";
+  text: string;
+}
+
+interface ImageContentPart {
+  type: "image_url";
+  image_url: {
+    url: string;
+  };
+}
+
+type UserContentPart = TextContentPart | ImageContentPart;
+
+/**
+ * Retries an async function with backoff
+ */
+async function callWithRetry<T>(
+  fn: () => Promise<T>,
+  retries = 2,
+  delay = 2500
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (error) {
+      attempt++;
+      if (attempt > retries) {
+        throw error;
+      }
+      console.warn(
+        `[aiService] LLM call failed (attempt ${attempt}/${retries}). Retrying in ${delay}ms...`,
+        error
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 /**
  * Core grading logic that passes the prompt, student work, visual pages, and sliding window context
  * to the local multimodal LLM.
@@ -42,6 +74,15 @@ export async function evaluateAssignment({
   memoryContext,
   rubric,
 }: EvaluateParams): Promise<AIGradingResult> {
+  // Lazy-initialize connection config to support runtime env changes
+  const baseURL = process.env.LM_STUDIO_URL || "http://localhost:1234/v1";
+  const modelName = process.env.LM_STUDIO_MODEL || "google/gemma-4-e2b";
+
+  const openai = new OpenAI({
+    apiKey: "not-needed-for-local-lm-studio",
+    baseURL,
+  });
+
   const systemPrompt = `Anda adalah Asisten Penilai AI Profesional untuk mengoreksi tugas/laporan mahasiswa.
 Tugas Anda adalah menilai laporan mahasiswa berdasarkan Rubrik Penilaian yang diberikan.
 
@@ -62,7 +103,7 @@ Format Output: Anda WAJIB menjawab HANYA dalam format JSON dengan struktur persi
   "plagiarismNote": "<catatan_indikasi_plagiarisme_atau_kemiripan_dengan_mahasiswa_tertentu_jika_ada_jika_tidak_ada_kosongkan>"
 }`;
 
-  const userContent: Array<{ type: "text" | "image_url"; text?: string; image_url?: { url: string } }> = [
+  const userContent: UserContentPart[] = [
     {
       type: "text",
       text: `Berikut adalah tugas dari mahasiswa bernama "${studentName}":\n\nTeks yang diekstrak dari PDF:\n"""\n${extractedText}\n"""\n\nSilakan evaluasi teks dan gambar terlampir jika ada.`,
@@ -80,14 +121,17 @@ Format Output: Anda WAJIB menjawab HANYA dalam format JSON dengan struktur persi
   });
 
   try {
-    const response = await openai.chat.completions.create({
-      model: modelName,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userContent as any },
-      ],
-      temperature: 0.2, // Consistent, deterministic output
-    });
+    // Wrap completions API call in retry wrapper
+    const response = await callWithRetry(() =>
+      openai.chat.completions.create({
+        model: modelName,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.2, // Consistent, deterministic output
+      })
+    );
 
     const rawReply = response.choices[0]?.message?.content || "";
     const sanitizedReply = sanitizeLLMJson(rawReply);
@@ -101,11 +145,11 @@ Format Output: Anda WAJIB menjawab HANYA dalam format JSON dengan struktur persi
         plagiarismNote: parsed.plagiarismNote || "",
       };
     } catch (parseError) {
-      console.error("Failed to parse local LLM JSON. Raw reply was:\n", rawReply);
+      console.error("[aiService] Failed to parse local LLM JSON. Raw reply was:\n", rawReply);
       throw new Error("Gagal mengurai respon AI menjadi format JSON. Silakan coba lagi.");
     }
   } catch (error) {
-    console.error("Error communicating with Local LM Studio:", error);
+    console.error("[aiService] Error communicating with Local LM Studio:", error);
     throw error;
   }
 }

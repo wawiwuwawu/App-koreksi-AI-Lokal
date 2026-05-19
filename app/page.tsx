@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { AssignmentRecord } from "@/types";
-import { Settings, Save } from "lucide-react";
+import { Settings } from "lucide-react";
 
 export default function DashboardPage() {
   const [assignments, setAssignments] = useState<AssignmentRecord[]>([]);
@@ -18,6 +18,10 @@ export default function DashboardPage() {
   const [rubric, setRubric] = useState("");
   const [windowSize, setWindowSize] = useState(3);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<"connected" | "disconnected" | "checking">(
+    "checking"
+  );
+  const [healthError, setHealthError] = useState<string | null>(null);
 
   // Fetch all graded assignments and pending queue
   const fetchAssignments = useCallback(async () => {
@@ -47,6 +51,20 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Fetch LM Studio health status
+  const fetchHealth = useCallback(async () => {
+    try {
+      const res = await fetch("/api/health");
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setHealthStatus(data.status);
+      setHealthError(data.error || null);
+    } catch (err) {
+      setHealthStatus("disconnected");
+      setHealthError("Gagal menghubungi endpoint health.");
+    }
+  }, []);
+
   // Save updated configurations
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,21 +88,28 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchAssignments();
     fetchConfig();
-  }, [fetchAssignments, fetchConfig]);
+    fetchHealth();
+  }, [fetchAssignments, fetchConfig, fetchHealth]);
 
-  // Autopoll every 4 seconds if there are active tasks in the queue
+  // Autopoll every 4-10 seconds for tasks, and every 15 seconds for health status
   useEffect(() => {
     const hasActiveJobs = assignments.some(
       (a) => a.status === "pending" || a.status === "processing"
     );
 
-    if (hasActiveJobs) {
-      const interval = setInterval(() => {
-        fetchAssignments();
-      }, 4000);
-      return () => clearInterval(interval);
-    }
-  }, [assignments, fetchAssignments]);
+    const interval = setInterval(() => {
+      fetchAssignments();
+    }, hasActiveJobs ? 4000 : 10000);
+
+    const healthInterval = setInterval(() => {
+      fetchHealth();
+    }, 15000);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(healthInterval);
+    };
+  }, [assignments, fetchAssignments, fetchHealth]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-250">
@@ -107,9 +132,22 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-zinc-550 text-xs">LM Studio Status:</span>
-            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Terhubung
-            </span>
+            {healthStatus === "connected" ? (
+              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Terhubung
+              </span>
+            ) : healthStatus === "checking" ? (
+              <span className="inline-flex items-center gap-1.5 text-xs text-yellow-500 font-medium bg-yellow-500/10 px-2.5 py-1 rounded-full border border-yellow-500/20 animate-pulse">
+                <span className="h-2 w-2 rounded-full bg-yellow-550 animate-pulse" /> Memeriksa...
+              </span>
+            ) : (
+              <span
+                title={healthError || undefined}
+                className="inline-flex items-center gap-1.5 text-xs text-rose-500 font-medium bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20 cursor-help"
+              >
+                <span className="h-2 w-2 rounded-full bg-rose-500" /> Terputus
+              </span>
+            )}
           </div>
         </div>
       </header>

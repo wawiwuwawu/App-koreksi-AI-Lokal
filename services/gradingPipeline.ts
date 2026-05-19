@@ -2,8 +2,7 @@ import { prisma } from "@/lib/db";
 import { ParsedSubmission } from "@/types";
 import {
   downloadFileFromGoogleDrive,
-  extractTextFromPDF,
-  convertPDFPagesToBase64,
+  processPDF,
 } from "./pdfService";
 import { getSlidingWindowContext } from "./memoryService";
 import { evaluateAssignment } from "./aiService";
@@ -12,11 +11,10 @@ import { evaluateAssignment } from "./aiService";
  * Orchestrates the full AI grading workflow:
  * 1. Mark status as "processing"
  * 2. Download from Google Drive (public links)
- * 3. Extract text
- * 4. Render visual pages to images
- * 5. Fetch previous grades (sliding window)
- * 6. Query multimodal LLM
- * 7. Write results (score, feedback, plagiarism analysis) to database
+ * 3. Extract text & render visual pages to images in one pass
+ * 4. Fetch previous grades (sliding window)
+ * 5. Query multimodal LLM
+ * 6. Write results (score, feedback, plagiarism analysis) to database
  */
 export async function processSubmission(assignmentId: string, submission: ParsedSubmission) {
   try {
@@ -47,13 +45,9 @@ Total skor: 0-100`;
     );
     const pdfBuffer = await downloadFileFromGoogleDrive(submission.driveFileUrl);
 
-    // 4. Extract PDF Text content
-    console.log(`[GradingPipeline] Extracting text...`);
-    const extractedText = await extractTextFromPDF(pdfBuffer);
-
-    // 5. Convert PDF pages to base64 images
-    console.log(`[GradingPipeline] Rendering pages to base64...`);
-    const base64Images = await convertPDFPagesToBase64(pdfBuffer);
+    // 4. Process PDF text and screenshots in one pass
+    console.log(`[GradingPipeline] Extracting text and rendering screenshots...`);
+    const { extractedText, base64Images } = await processPDF(pdfBuffer);
 
     // 6. Retrieve Memory sliding window context
     console.log(

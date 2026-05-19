@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { ParsedSubmission } from "@/types";
+import { ParsedSubmission, WebhookPayload } from "@/types";
 import { processSubmission } from "@/services/gradingPipeline";
 
 export async function POST(req: NextRequest) {
-  let body: any;
+  // 1. Authenticate webhook request via secret token if configured
+  const secretHeader = req.headers.get("x-webhook-secret");
+  const configuredSecret = process.env.WEBHOOK_SECRET;
+  if (configuredSecret && secretHeader !== configuredSecret) {
+    return NextResponse.json({ error: "Unauthorized webhook access" }, { status: 401 });
+  }
+
+  let body: WebhookPayload;
   try {
     body = await req.json();
   } catch (err) {
@@ -65,7 +72,27 @@ export async function POST(req: NextRequest) {
   const fileName = `${safeName}_${taskId}.pdf`;
 
   try {
-    // 1. Create a database record in pending state
+    // 2. Prevent duplicate entries for the same student + taskId
+    const existingAssignment = await prisma.assignment.findFirst({
+      where: {
+        studentName,
+        taskId,
+        status: { not: "failed" },
+      },
+    });
+
+    if (existingAssignment) {
+      console.log(
+        `[Webhook] Skipping duplicate submission for ${studentName} (${taskId}), existing ID: ${existingAssignment.id}`
+      );
+      return NextResponse.json({
+        success: true,
+        message: "Submission already received and processing/completed",
+        assignmentId: existingAssignment.id,
+      });
+    }
+
+    // 3. Create a database record in pending state
     const newAssignment = await prisma.assignment.create({
       data: {
         studentName,
@@ -77,7 +104,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 2. Fire grading pipeline asynchronously in background to prevent webhook timeout
+    // 4. Fire grading pipeline asynchronously in background to prevent webhook timeout
     processSubmission(newAssignment.id, parsedSubmission)
       .then(() => {
         console.log(`[Webhook] Background grading finished successfully for ${studentName}`);
@@ -86,7 +113,7 @@ export async function POST(req: NextRequest) {
         console.error(`[Webhook] Background grading crashed for ${studentName}:`, err);
       });
 
-    // 3. Immediately return status 200 with queue confirmation
+    // 5. Immediately return status 200 with queue confirmation
     return NextResponse.json({
       success: true,
       message: "Submission received and queued for grading",
