@@ -1,11 +1,7 @@
-import fs from "fs";
-import path from "path";
-import pdf from "pdf-parse";
-import { pdfToImg } from "pdftoimg-js";
+import { PDFParse } from "pdf-parse";
 
 // Extract Google Drive file ID from standard view or open URL formats
 export function extractDriveFileId(url: string): string {
-  // Matches IDs like: 1a2b3c4d5e...
   const reg = /[-\w]{25,}/;
   const match = url.match(reg);
   if (match) return match[0];
@@ -15,7 +11,6 @@ export function extractDriveFileId(url: string): string {
 // Downloads Google Drive file using public download link into buffer
 export async function downloadFileFromGoogleDrive(driveUrl: string): Promise<Buffer> {
   const fileId = extractDriveFileId(driveUrl);
-  // Construct direct download link (requires file to be shared as "Anyone with link can view")
   const downloadUrl = `https://drive.google.com/uc?export=download&confirm=no_antivirus&id=${fileId}`;
 
   const response = await fetch(downloadUrl);
@@ -29,60 +24,49 @@ export async function downloadFileFromGoogleDrive(driveUrl: string): Promise<Buf
 
 // Extract raw text from PDF buffer
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+  let parser: PDFParse | null = null;
   try {
-    const data = await pdf(buffer);
-    return data.text || "";
+    const uint8 = new Uint8Array(buffer);
+    parser = new PDFParse({ data: uint8 });
+    const result = await parser.getText();
+    return result.text || "";
   } catch (error) {
     console.error("Error extracting text from PDF:", error);
     throw new Error("Gagal membaca teks dari PDF");
+  } finally {
+    if (parser) {
+      try {
+        await parser.destroy();
+      } catch (err) {
+        // Ignored
+      }
+    }
   }
 }
 
 // Convert first 3 pages of PDF to Base64 image strings for multimodal evaluation
 export async function convertPDFPagesToBase64(buffer: Buffer): Promise<string[]> {
-  const tempDir = path.join(process.cwd(), "temp-files");
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
-  }
-
-  const tempFilePath = path.join(
-    tempDir,
-    `temp-${Date.now()}-${Math.random().toString(36).substring(7)}.pdf`
-  );
-  fs.writeFileSync(tempFilePath, buffer);
-
-  const base64Images: string[] = [];
-
+  let parser: PDFParse | null = null;
   try {
-    // Process first 3 pages (or less if document is shorter)
-    for (let pageNum = 1; pageNum <= 3; pageNum++) {
-      try {
-        const dataUrl = await pdfToImg(tempFilePath, {
-          pages: pageNum,
-          imgType: "png",
-          scale: 1.5,
-        });
+    const uint8 = new Uint8Array(buffer);
+    parser = new PDFParse({ data: uint8 });
+    const screenshotResult = await parser.getScreenshot({
+      first: 3,
+      scale: 1.5,
+      imageDataUrl: true,
+      imageBuffer: false,
+    });
 
-        if (dataUrl) {
-          // dataUrl is already formatted as "data:image/png;base64,iVBORw0KGgo..."
-          base64Images.push(dataUrl);
-        }
-      } catch (err) {
-        // Loop breaks or page doesn't exist (e.g. page 2 on a 1-page PDF)
-        break;
-      }
-    }
-    return base64Images;
+    return (screenshotResult.pages || []).map((page) => page.dataUrl);
   } catch (error) {
     console.error("Error converting PDF to images:", error);
-    return []; // Return empty if image conversion fails, fallback to text only
+    return []; // Return empty list, grading pipeline will fallback to text-only evaluation
   } finally {
-    // Clean up temp file
-    if (fs.existsSync(tempFilePath)) {
+    if (parser) {
       try {
-        fs.unlinkSync(tempFilePath);
+        await parser.destroy();
       } catch (err) {
-        console.error("Failed to delete temp file:", err);
+        // Ignored
       }
     }
   }
