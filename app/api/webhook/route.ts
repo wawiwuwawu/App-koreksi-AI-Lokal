@@ -18,28 +18,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  // Extract raw arrays from e.namedValues Google Sheets format
-  const timestampArray = body["Timestamp"];
-  const studentNameArray = body["Nama Mahasiswa"];
-  const driveLinkArray = body["Upload Laporan (PDF)"];
-  const taskIdArray = body["id_tugas"];
+  // Helper to extract values dynamically supporting different column headers
+  const getPayloadValue = (payload: any, exactKeys: string[], partialMatch: string) => {
+    for (const key of exactKeys) {
+      if (payload[key] && Array.isArray(payload[key]) && payload[key].length > 0) {
+        return payload[key];
+      }
+    }
+    const lowerPartial = partialMatch.toLowerCase();
+    for (const key of Object.keys(payload)) {
+      if (key.toLowerCase().includes(lowerPartial)) {
+        if (payload[key] && Array.isArray(payload[key]) && payload[key].length > 0) {
+          return payload[key];
+        }
+      }
+    }
+    return null;
+  };
+
+  // Extract values dynamically
+  const timestampArray = getPayloadValue(body, ["Timestamp"], "timestamp");
+  const studentNameArray = getPayloadValue(body, ["Nama Mahasiswa", "Nama"], "nama");
+  const driveLinkArray = getPayloadValue(body, ["Upload Laporan (PDF)", "Upload Lab Activity"], "upload");
+  const taskIdArray = getPayloadValue(body, ["id_tugas", "taskId"], "tugas");
 
   // Basic validation to check required structures exist
-  if (
-    !timestampArray ||
-    !Array.isArray(timestampArray) ||
-    timestampArray.length === 0 ||
-    !studentNameArray ||
-    !Array.isArray(studentNameArray) ||
-    studentNameArray.length === 0 ||
-    !driveLinkArray ||
-    !Array.isArray(driveLinkArray) ||
-    driveLinkArray.length === 0
-  ) {
+  if (!timestampArray || !studentNameArray || !driveLinkArray) {
     return NextResponse.json(
       {
         error:
-          "Missing or invalid required arrays (Timestamp, Nama Mahasiswa, or Upload Laporan (PDF))",
+          "Missing or invalid required columns. Make sure your form has columns for Timestamp, Student Name (e.g. 'Nama' or 'Nama Mahasiswa'), and PDF Upload (e.g. 'Upload Lab Activity' or 'Upload Laporan (PDF)').",
       },
       { status: 400 }
     );
