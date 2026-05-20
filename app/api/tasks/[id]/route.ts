@@ -44,6 +44,7 @@ export async function GET(
       task,
       assignments,
       queueLength,
+      webhookSecret: process.env.WEBHOOK_SECRET || "",
     });
   } catch (error: any) {
     return NextResponse.json(

@@ -64,6 +64,9 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
       setQueueLength(data.queueLength);
       setRubric(data.task.rubric);
       setWindowSize(data.task.windowSize);
+      if (data.webhookSecret) {
+        setWebhookSecret(data.webhookSecret);
+      }
     } catch (err: any) {
       toast.error(err?.message || "Gagal memuat tugas.");
     } finally {
@@ -105,10 +108,6 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
 
   useEffect(() => {
     checkAuthAndFetch();
-    // Load local webhook secret if configured
-    if (typeof window !== "undefined") {
-      setWebhookSecret(process.env.NEXT_PUBLIC_WEBHOOK_SECRET || "token_rahasia_anda");
-    }
   }, [checkAuthAndFetch]);
 
   // Autopoll for assignments
