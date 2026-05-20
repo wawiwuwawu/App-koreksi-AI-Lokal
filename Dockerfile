@@ -50,7 +50,8 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 
 # 4. Install Prisma CLI & dependensi database secara utuh untuk runtime migration & seeding
-RUN npm install --no-save prisma@7 tsx dotenv pg @prisma/adapter-pg @prisma/client
+# Gunakan --force agar menimpa dependensi parsial hasil pemotongan (tree-shaking) Next.js
+RUN npm install --no-save --force prisma@7 tsx dotenv pg @prisma/adapter-pg @prisma/client
 
 # 5. Salin & siapkan script entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
