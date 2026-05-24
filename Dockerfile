@@ -49,11 +49,11 @@ COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 
-# 4. Hapus paket database parsial dari standalone (tree-shaken oleh Next.js) lalu install ulang secara utuh
+# 4. Hapus paket parsial dari standalone (tree-shaken oleh Next.js) lalu install ulang secara utuh
 RUN rm -rf node_modules/pg node_modules/pg-* node_modules/postgres-* \
-           node_modules/pgpass node_modules/@prisma node_modules/prisma \
-           node_modules/tsx node_modules/esbuild node_modules/dotenv && \
-    npm install --no-save prisma@7 tsx dotenv pg @prisma/adapter-pg @prisma/client
+      node_modules/pgpass node_modules/@prisma node_modules/prisma \
+      node_modules/tsx node_modules/esbuild node_modules/dotenv && \
+    npm install --no-save prisma@7 tsx dotenv @prisma/client
 
 # 5. Salin & siapkan script entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh

@@ -1,14 +1,19 @@
 #!/bin/sh
 set -e
 
-echo "Waiting for database to be ready..."
+echo "Waiting for database to be reachable..."
 MAX_RETRIES=30
 RETRY_COUNT=0
 
 until node -e "
-const { Client } = require('pg');
-const c = new Client({ connectionString: process.env.DATABASE_URL });
-c.connect().then(() => c.end()).catch(() => process.exit(1));
+const net = require('net');
+const url = new URL(process.env.DATABASE_URL);
+const port = Number(url.port || 3306);
+const socket = net.createConnection({ host: url.hostname, port }, () => {
+  socket.end();
+  process.exit(0);
+});
+socket.on('error', () => process.exit(1));
 " 2>/dev/null; do
   RETRY_COUNT=$((RETRY_COUNT + 1))
   if [ "$RETRY_COUNT" -ge "$MAX_RETRIES" ]; then
@@ -19,7 +24,7 @@ c.connect().then(() => c.end()).catch(() => process.exit(1));
   sleep 2
 done
 
-echo "Database is ready! Running migrations..."
+echo "Database is reachable! Running migrations..."
 npx prisma migrate deploy
 
 echo "Starting Next.js application..."
