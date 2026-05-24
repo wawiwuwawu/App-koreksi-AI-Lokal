@@ -7,9 +7,9 @@ RETRY_COUNT=0
 
 until node -e "
 const net = require('net');
-const url = new URL(process.env.DATABASE_URL);
-const port = Number(url.port || 3306);
-const socket = net.createConnection({ host: url.hostname, port }, () => {
+const host = process.env.DB_HOST || 'localhost';
+const port = Number(process.env.DB_PORT || 3306);
+const socket = net.createConnection({ host, port }, () => {
   socket.end();
   process.exit(0);
 });

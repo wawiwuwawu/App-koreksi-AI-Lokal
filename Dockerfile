@@ -17,7 +17,12 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Suntikkan variabel dummy agar lolos validasi Prisma config saat build
-ENV DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
+ENV DATABASE_URL=mysql://dummy:dummy@localhost:3306/dummy
+ENV DB_HOST=localhost
+ENV DB_PORT=3306
+ENV DB_USER=dummy
+ENV DB_PASSWORD=dummy
+ENV DB_NAME=dummy
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Generate Prisma client dan build aplikasi Next.js
@@ -50,10 +55,10 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 
 # 4. Hapus paket parsial dari standalone (tree-shaken oleh Next.js) lalu install ulang secara utuh
-RUN rm -rf node_modules/pg node_modules/pg-* node_modules/postgres-* \
-      node_modules/pgpass node_modules/@prisma node_modules/prisma \
+RUN rm -rf node_modules/@prisma node_modules/prisma \
+      node_modules/mariadb \
       node_modules/tsx node_modules/esbuild node_modules/dotenv && \
-    npm install --no-save prisma@7 tsx dotenv @prisma/client
+    npm install --no-save prisma@7 tsx dotenv @prisma/client @prisma/adapter-mariadb mariadb
 
 # 5. Salin & siapkan script entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh

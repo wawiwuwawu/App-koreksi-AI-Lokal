@@ -1,8 +1,22 @@
 import "dotenv/config";
 import { PrismaClient } from "../generated/prisma/client";
+import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import * as crypto from "crypto";
 
-const prisma = new PrismaClient();
+function createPrismaClient() {
+  const url = new URL(process.env.DATABASE_URL || "mysql://root:@localhost:3306/grading_app");
+  const adapter = new PrismaMariaDb({
+    host: url.hostname,
+    port: Number(url.port || 3306),
+    user: url.username || "root",
+    password: url.password || "",
+    database: url.pathname.replace("/", ""),
+    connectionLimit: 5,
+  });
+  return new PrismaClient({ adapter });
+}
+
+const prisma = createPrismaClient();
 
 function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
