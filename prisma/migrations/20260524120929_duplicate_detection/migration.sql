@@ -10,4 +10,4 @@ ALTER TABLE `assignment` ADD COLUMN `duplicateOfId` VARCHAR(191) NULL,
 ALTER TABLE `task` ADD COLUMN `duplicateScore` INTEGER NOT NULL DEFAULT 50;
 
 -- AddForeignKey
-ALTER TABLE `Assignment` ADD CONSTRAINT `Assignment_duplicateOfId_fkey` FOREIGN KEY (`duplicateOfId`) REFERENCES `Assignment`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `assignment` ADD CONSTRAINT `Assignment_duplicateOfId_fkey` FOREIGN KEY (`duplicateOfId`) REFERENCES `assignment`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
