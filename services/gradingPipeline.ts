@@ -1,8 +1,6 @@
 import { prisma } from "@/lib/db";
-import {
-  downloadFileFromGoogleDrive,
-  processPDF,
-} from "./pdfService";
+import { downloadFileFromGoogleDrive } from "./pdfService";
+import { processDocument } from "./documentService";
 import { getSlidingWindowContext } from "./memoryService";
 import { evaluateAssignment } from "./aiService";
 import { createHash } from "crypto";
@@ -11,8 +9,8 @@ import { createHash } from "crypto";
  * Orchestrates the full AI grading workflow:
  * 1. Mark status as "processing"
  * 2. Fetch Task and Rubric details
- * 3. Download PDF from Google Drive
- * 4. Extract text and render pages to images in one pass
+ * 3. Download Document (PDF/DOCX) from Google Drive
+ * 4. Extract text and render pages/extract images to base64 in one pass
  * 5. Fetch previous grades for the same task (sliding window)
  * 6. Query local multimodal LLM
  * 7. Write results (score, feedback, plagiarism analysis) to database
@@ -50,13 +48,21 @@ export async function processSubmission(assignmentId: string) {
     console.log(
       `[GradingPipeline] Downloading file for ${studentName} from: ${driveFileUrl}`
     );
-    const pdfBuffer = await downloadFileFromGoogleDrive(driveFileUrl);
+    const docBuffer = await downloadFileFromGoogleDrive(driveFileUrl);
 
-    // 4. Process PDF text and screenshots in one pass
-    console.log(`[GradingPipeline] Extracting text and rendering screenshots...`);
-    const { extractedText, base64Images, imageHashes } = await processPDF(pdfBuffer);
+    // 4. Process document text and images in one pass
+    console.log(`[GradingPipeline] Extracting text and parsing images...`);
+    const { extractedText, base64Images, imageHashes, fileExtension } = await processDocument(docBuffer);
     const textHash = hashNormalizedText(extractedText);
     const imageHashesSerialized = JSON.stringify(imageHashes);
+
+    // Determine the dynamic file extension name
+    let updatedFileName = assignment.fileName;
+    if (fileExtension === "docx" && assignment.fileName.endsWith(".pdf")) {
+      updatedFileName = assignment.fileName.replace(/\.pdf$/, ".docx");
+    } else if (fileExtension === "pdf" && assignment.fileName.endsWith(".docx")) {
+      updatedFileName = assignment.fileName.replace(/\.docx$/, ".pdf");
+    }
 
     const duplicateCandidate = await findDuplicateCandidate({
       assignmentId,
@@ -73,6 +79,7 @@ export async function processSubmission(assignmentId: string) {
         prisma.assignment.update({
           where: { id: assignmentId },
           data: {
+            fileName: updatedFileName,
             extractedText,
             textHash,
             imageHashes: imageHashesSerialized,
@@ -121,6 +128,7 @@ export async function processSubmission(assignmentId: string) {
     await prisma.assignment.update({
       where: { id: assignmentId },
       data: {
+        fileName: updatedFileName,
         extractedText,
         textHash,
         imageHashes: imageHashesSerialized,
