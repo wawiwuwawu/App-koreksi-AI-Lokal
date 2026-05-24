@@ -71,7 +71,7 @@ export async function GET(
     };
     for (const group of statusGroups) {
       if (group.status in statusCounts) {
-        statusCounts[group.status as keyof typeof statusCounts] = group._count._all;
+        statusCounts[group.status as keyof typeof statusCounts] = group._count?._all ?? 0;
       }
     }
 
