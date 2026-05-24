@@ -26,6 +26,13 @@ export async function GET(
     const assignments = await prisma.assignment.findMany({
       where: { taskId },
       orderBy: { studentName: "asc" },
+      include: {
+        duplicateOf: {
+          select: {
+            studentName: true,
+          },
+        },
+      },
     });
 
     // Helper to sanitize CSV fields (escape quotes, wrap in quotes)
@@ -40,6 +47,10 @@ export async function GET(
       "Nama Mahasiswa",
       "Nilai",
       "Status",
+      "Duplikat?",
+      "Alasan Duplikat",
+      "Kemiripan",
+      "Duplikat Dari",
       "Feedback AI",
       "Catatan Plagiarisme",
       "Google Drive URL",
@@ -53,6 +64,10 @@ export async function GET(
         escapeCSV(ass.studentName),
         escapeCSV(ass.score !== null ? ass.score : "-"),
         escapeCSV(ass.status),
+        escapeCSV(ass.isDuplicate ? "Ya" : "Tidak"),
+        escapeCSV(ass.duplicateReason || "-"),
+        escapeCSV(ass.duplicateSimilarity !== null ? `${(ass.duplicateSimilarity * 100).toFixed(1)}%` : "-"), // fixed calculation representation
+        escapeCSV(ass.duplicateOf?.studentName || "-"),
         escapeCSV(ass.feedback),
         escapeCSV(ass.plagiarismNote),
         escapeCSV(ass.driveFileUrl),
