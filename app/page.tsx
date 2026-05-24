@@ -60,6 +60,7 @@ export default function DashboardPage() {
   const [taskTitle, setTaskTitle] = useState("");
   const [taskRubric, setTaskRubric] = useState("");
   const [taskWindowSize, setTaskWindowSize] = useState("3");
+  const [taskDuplicateScore, setTaskDuplicateScore] = useState("50");
 
   // Check auth and fetch user info
   const checkAuth = useCallback(async () => {
@@ -184,6 +185,7 @@ export default function DashboardPage() {
           title: taskTitle,
           rubric: taskRubric,
           windowSize: taskWindowSize,
+          duplicateScore: taskDuplicateScore,
           classId: selectedClassId,
         }),
       });
@@ -195,6 +197,7 @@ export default function DashboardPage() {
       setTaskTitle("");
       setTaskRubric("");
       setTaskWindowSize("3");
+      setTaskDuplicateScore("50");
       fetchCourses();
     } catch (err: any) {
       toast.error(err?.message || "Gagal membuat tugas");
@@ -604,6 +607,17 @@ export default function DashboardPage() {
                       className="bg-zinc-950 border-zinc-800 text-zinc-150 focus-visible:ring-emerald-500"
                     />
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-zinc-400">Nilai Duplikat</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={taskDuplicateScore}
+                    onChange={e => setTaskDuplicateScore(e.target.value)}
+                    className="bg-zinc-950 border-zinc-800 text-zinc-150 focus-visible:ring-emerald-500"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs text-zinc-400">Judul Tugas</Label>

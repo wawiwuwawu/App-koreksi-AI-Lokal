@@ -1,4 +1,5 @@
 import { PDFParse } from "pdf-parse";
+import { createHash } from "crypto";
 
 // Extract Google Drive file ID from standard view or open URL formats
 export function extractDriveFileId(url: string): string {
@@ -37,7 +38,7 @@ export async function downloadFileFromGoogleDrive(driveUrl: string): Promise<Buf
 // Process PDF text and screenshots in a single PDFParse lifecycle pass
 export async function processPDF(
   buffer: Buffer
-): Promise<{ extractedText: string; base64Images: string[] }> {
+): Promise<{ extractedText: string; base64Images: string[]; imageHashes: string[] }> {
   let parser: PDFParse | null = null;
   try {
     const uint8 = new Uint8Array(buffer);
@@ -49,20 +50,30 @@ export async function processPDF(
 
     // 2. Extract visual page screenshots (first 3 pages)
     let base64Images: string[] = [];
+    let imageHashes: string[] = [];
     try {
       const screenshotResult = await parser.getScreenshot({
-        first: 3,
         scale: 1.5,
         imageDataUrl: true,
         imageBuffer: false,
       });
-      base64Images = (screenshotResult.pages || []).map((page) => page.dataUrl);
+      const pages = screenshotResult.pages || [];
+      base64Images = pages.slice(0, 3).map((page) => page.dataUrl);
+      imageHashes = pages
+        .map((page) => {
+          const raw = page.dataUrl || "";
+          const base64 = raw.includes(",") ? raw.split(",")[1] : raw;
+          if (!base64) return null;
+          const bufferData = Buffer.from(base64, "base64");
+          return createHash("sha256").update(bufferData).digest("hex");
+        })
+        .filter((hash): hash is string => Boolean(hash));
     } catch (screenshotError) {
       console.error("[pdfService] Failed to render screenshots from PDF:", screenshotError);
       // Fallback: we still have the extracted text, so keep going
     }
 
-    return { extractedText, base64Images };
+    return { extractedText, base64Images, imageHashes };
   } catch (error) {
     console.error("[pdfService] Error processing PDF:", error);
     throw new Error("Gagal membaca atau memproses dokumen PDF");

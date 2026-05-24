@@ -40,6 +40,7 @@ model Task {
   title       String       // e.g. Tugas 1: Algoritma
   rubric      String       @db.Text
   windowSize  Int          @default(3)
+  duplicateScore Int        @default(50)
   classId     String
   class       Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
   assignments Assignment[]
@@ -57,6 +58,14 @@ model Assignment {
   driveFileUrl   String?
   status         String   @default("pending") // pending | processing | done | failed
   errorMessage   String?  @db.Text
+  isDuplicate    Boolean  @default(false)
+  duplicateOfId  String?
+  duplicateOf    Assignment? @relation("AssignmentDuplicate", fields: [duplicateOfId], references: [id])
+  duplicates     Assignment[] @relation("AssignmentDuplicate")
+  duplicateReason String? @db.Text
+  duplicateSimilarity Float?
+  textHash       String?
+  imageHashes    String?  @db.Text
   taskId         String
   task           Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())

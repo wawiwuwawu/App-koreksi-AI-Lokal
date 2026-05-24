@@ -21,6 +21,14 @@ export interface AssignmentRecord {
   driveFileUrl: string | null;
   status: string;
   errorMessage: string | null;
+  isDuplicate?: boolean | null;
+  duplicateOfId?: string | null;
+  duplicateReason?: string | null;
+  duplicateSimilarity?: number | null;
+  duplicateOf?: {
+    id: string;
+    studentName: string;
+  } | null;
   createdAt: Date;
 }
 

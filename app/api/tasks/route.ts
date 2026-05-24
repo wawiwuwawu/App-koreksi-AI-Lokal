@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const { id, title, rubric, windowSize, classId } = await req.json();
+    const { id, title, rubric, windowSize, classId, duplicateScore } = await req.json();
 
     if (!title || !classId) {
       return NextResponse.json({ error: "Judul tugas dan kelas wajib diisi" }, { status: 400 });
@@ -43,12 +43,22 @@ export async function POST(req: NextRequest) {
     const parsedWindowSize = parseInt(windowSize, 10);
     const finalWindowSize = isNaN(parsedWindowSize) ? 3 : parsedWindowSize;
 
+    const parsedDuplicateScore = parseInt(duplicateScore, 10);
+    const finalDuplicateScore = isNaN(parsedDuplicateScore) ? 50 : parsedDuplicateScore;
+    if (finalDuplicateScore < 0) {
+      return NextResponse.json(
+        { error: "Nilai duplikat harus berupa angka positif" },
+        { status: 400 }
+      );
+    }
+
     const task = await prisma.task.create({
       data: {
         id: taskId,
         title: title.trim(),
         rubric: rubric ? rubric.trim() : "Kriteria Penilaian Laporan:\n1. Kesesuaian dengan topik (0-100)\nTotal skor: 0-100",
         windowSize: finalWindowSize,
+        duplicateScore: finalDuplicateScore,
         classId,
       },
     });

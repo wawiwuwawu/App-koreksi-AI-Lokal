@@ -19,6 +19,14 @@ export async function GET(req: Request) {
         },
         skip,
         take: pageSize,
+        include: {
+          duplicateOf: {
+            select: {
+              id: true,
+              studentName: true,
+            },
+          },
+        },
       }),
       prisma.assignment.count(),
     ]);

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { AssignmentRecord } from "@/types";
-import { Settings, ArrowLeft, Download, Loader2, Play } from "lucide-react";
+import { Settings, ArrowLeft, Download, Loader2, Play, RotateCcw } from "lucide-react";
 
 interface TaskPageProps {
   params: Promise<{ taskId: string }>;
@@ -22,7 +22,7 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
   const { taskId } = use(params);
 
   const [lecturer, setLecturer] = useState<{ name: string; email: string } | null>(null);
-  const [task, setTask] = useState<{ title: string; rubric: string; windowSize: number; class: { name: string; course: { name: string } } } | null>(null);
+  const [task, setTask] = useState<{ title: string; rubric: string; windowSize: number; duplicateScore: number; class: { name: string; course: { name: string } } } | null>(null);
   const [assignments, setAssignments] = useState<AssignmentRecord[]>([]);
   const [queueLength, setQueueLength] = useState(0);
   const [assignmentPage, setAssignmentPage] = useState(1);
@@ -41,10 +41,12 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [rubric, setRubric] = useState("");
   const [windowSize, setWindowSize] = useState(3);
+  const [duplicateScore, setDuplicateScore] = useState(50);
   const [webhookSecret, setWebhookSecret] = useState("");
 
   const [healthStatus, setHealthStatus] = useState<"connected" | "disconnected" | "checking">("checking");
   const [healthError, setHealthError] = useState<string | null>(null);
+  const [isRetryingFailed, setIsRetryingFailed] = useState(false);
 
   // Authenticate and load task initial details
   const checkAuthAndFetch = useCallback(async () => {
@@ -77,6 +79,7 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
       setQueueLength(data.queueLength);
       setRubric(data.task.rubric);
       setWindowSize(data.task.windowSize);
+      setDuplicateScore(data.task.duplicateScore ?? 50);
       if (data.pagination) {
         setAssignmentTotal(data.pagination.total || 0);
         setAssignmentTotalPages(data.pagination.totalPages || 1);
@@ -114,7 +117,7 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rubric, windowSize }),
+        body: JSON.stringify({ rubric, windowSize, duplicateScore }),
       });
       if (!res.ok) throw new Error("Gagal menyimpan konfigurasi.");
       toast.success("Kriteria rubrik tugas berhasil disimpan!");
@@ -123,6 +126,22 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
       toast.error(err?.message || "Gagal menyimpan rubrik.");
     } finally {
       setIsSavingConfig(false);
+    }
+  };
+
+  const handleRetryFailed = async () => {
+    if (!confirm("Ulangi semua tugas yang gagal untuk task ini?")) return;
+    setIsRetryingFailed(true);
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/retry-failed`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal mengulang tugas gagal");
+      toast.success(data.message || "Tugas gagal berhasil diantrekan ulang");
+      fetchTaskData();
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal mengulang tugas gagal");
+    } finally {
+      setIsRetryingFailed(false);
     }
   };
 
@@ -221,6 +240,14 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
             </h1>
           </div>
           <div className="flex gap-2">
+            <Button
+              onClick={handleRetryFailed}
+              disabled={isRetryingFailed}
+              className="inline-flex items-center justify-center rounded-md bg-rose-500/10 border border-rose-500/30 text-rose-200 text-sm font-semibold hover:bg-rose-500/20 px-4 py-2 transition-all cursor-pointer shadow-lg"
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              {isRetryingFailed ? "Mengulang..." : "Retry Semua Gagal"}
+            </Button>
             <a
               href={`/api/tasks/${taskId}/export`}
               target="_blank"
@@ -297,6 +324,27 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
                     </p>
                   </div>
 
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="duplicate-score"
+                      className="text-xs font-semibold text-zinc-400 uppercase tracking-wider"
+                    >
+                      Nilai Duplikat
+                    </Label>
+                    <Input
+                      id="duplicate-score"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={duplicateScore}
+                      onChange={(e) => setDuplicateScore(parseInt(e.target.value, 10) || 0)}
+                      className="bg-zinc-900 border-zinc-800 text-zinc-100 font-mono text-sm focus-visible:ring-emerald-500"
+                    />
+                    <p className="text-[11px] text-zinc-500 leading-relaxed">
+                      Nilai yang akan diterapkan otomatis untuk tugas yang terdeteksi duplikat.
+                    </p>
+                  </div>
+
                   {/* Rubric Input */}
                   <div className="space-y-2">
                     <Label
@@ -336,6 +384,7 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
               totalPages={assignmentTotalPages}
               totalItems={assignmentTotal}
               onPageChange={setAssignmentPage}
+              duplicateScore={duplicateScore}
             />
           </div>
         </div>

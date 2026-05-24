@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { AssignmentRecord } from "@/types";
-import { ExternalLink, Eye, AlertTriangle, X, HelpCircle } from "lucide-react";
+import { ExternalLink, Eye, AlertTriangle, X, HelpCircle, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
 interface ResultsTableProps {
@@ -16,6 +16,7 @@ interface ResultsTableProps {
   totalPages?: number;
   totalItems?: number;
   onPageChange?: (page: number) => void;
+  duplicateScore?: number;
 }
 
 export default function ResultsTable({
@@ -25,8 +26,11 @@ export default function ResultsTable({
   totalPages = 1,
   totalItems,
   onPageChange,
+  duplicateScore = 50,
 }: ResultsTableProps) {
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentRecord | null>(null);
+  const [duplicateSourceId, setDuplicateSourceId] = useState("");
+  const [isMarkingDuplicate, setIsMarkingDuplicate] = useState(false);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -52,6 +56,64 @@ export default function ResultsTable({
       hour: "2-digit",
       minute: "2-digit",
     });
+  };
+
+  const openAssignmentById = async (assignmentId: string) => {
+    const localMatch = assignments.find((a) => a.id === assignmentId);
+    if (localMatch) {
+      setSelectedAssignment(localMatch);
+      setDuplicateSourceId("");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/assignments/${assignmentId}`);
+      if (!res.ok) throw new Error("Gagal mengambil detail assignment");
+      const data = await res.json();
+      setSelectedAssignment(data.assignment);
+      setDuplicateSourceId("");
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal membuka detail assignment");
+    }
+  };
+
+  const handleMarkDuplicate = async () => {
+    if (!selectedAssignment || !duplicateSourceId) {
+      toast.error("Pilih assignment sumber duplikat terlebih dahulu");
+      return;
+    }
+
+    setIsMarkingDuplicate(true);
+    try {
+      const res = await fetch(`/api/assignments/${selectedAssignment.id}/duplicate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceId: duplicateSourceId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menandai duplikat");
+
+      toast.success("Assignment berhasil ditandai duplikat dan nilainya disamakan");
+      setDuplicateSourceId("");
+      if (onRefresh) onRefresh();
+      setSelectedAssignment(data.assignment || selectedAssignment);
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal menandai duplikat");
+    } finally {
+      setIsMarkingDuplicate(false);
+    }
+  };
+
+  const handleRetry = async (assignmentId: string) => {
+    if (!confirm("Ulangi penilaian untuk tugas ini?")) return;
+    try {
+      const res = await fetch(`/api/assignments/${assignmentId}/retry`, { method: "POST" });
+      if (!res.ok) throw new Error("Gagal mengantrekan kembali tugas");
+      toast.success("Tugas berhasil dimasukkan ke antrean kembali!");
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal re-grade.");
+    }
   };
 
   return (
@@ -89,7 +151,25 @@ export default function ResultsTable({
                       key={assignment.id}
                       className="border-zinc-800 hover:bg-zinc-900/30 transition-colors"
                     >
-                      <TableCell className="font-medium text-white">{assignment.studentName}</TableCell>
+                      <TableCell className="font-medium text-white">
+                        <div className="flex flex-col gap-1">
+                          <span>{assignment.studentName}</span>
+                          {assignment.isDuplicate && assignment.duplicateOf && (
+                            <div className="flex items-center gap-2 text-[11px] text-amber-300">
+                              <Badge className="bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                Duplikat
+                              </Badge>
+                              <button
+                                type="button"
+                                className="underline decoration-dotted hover:text-amber-200"
+                                onClick={() => openAssignmentById(assignment.duplicateOf!.id)}
+                              >
+                                {assignment.duplicateOf.studentName}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="font-mono text-zinc-400 text-xs">
                         {assignment.taskId || "N/A"}
                       </TableCell>
@@ -109,14 +189,29 @@ export default function ResultsTable({
                         )}
                       </TableCell>
                       <TableCell className="text-center">
-                        <Button
-                          onClick={() => setSelectedAssignment(assignment)}
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-zinc-350 hover:text-white hover:bg-zinc-800"
-                        >
-                          <Eye className="h-4 w-4 mr-1.5 text-zinc-400" /> Detail
-                        </Button>
+                        <div className="flex items-center justify-center gap-2">
+                          {assignment.status === "failed" && (
+                            <Button
+                              onClick={() => handleRetry(assignment.id)}
+                              variant="outline"
+                              size="sm"
+                              className="h-8 border-rose-500/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Retry
+                            </Button>
+                          )}
+                          <Button
+                            onClick={() => {
+                              setSelectedAssignment(assignment);
+                              setDuplicateSourceId("");
+                            }}
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-zinc-350 hover:text-white hover:bg-zinc-800"
+                          >
+                            <Eye className="h-4 w-4 mr-1.5 text-zinc-400" /> Detail
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -214,6 +309,73 @@ export default function ResultsTable({
                 </div>
               )}
 
+              {(selectedAssignment.isDuplicate || selectedAssignment.duplicateReason) && (
+                <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-4 text-sm text-amber-300 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 shrink-0" />
+                    <h4 className="font-semibold text-amber-200">Status Duplikat</h4>
+                  </div>
+                  {selectedAssignment.duplicateOf && (
+                    <div className="text-xs text-zinc-300">
+                      Sumber: {" "}
+                      <button
+                        type="button"
+                        className="underline decoration-dotted hover:text-amber-200"
+                        onClick={() => openAssignmentById(selectedAssignment.duplicateOf!.id)}
+                      >
+                        {selectedAssignment.duplicateOf.studentName}
+                      </button>
+                    </div>
+                  )}
+                  {selectedAssignment.duplicateReason && (
+                    <div className="text-xs text-zinc-400">Alasan: {selectedAssignment.duplicateReason}</div>
+                  )}
+                  {typeof selectedAssignment.duplicateSimilarity === "number" && (
+                    <div className="text-xs text-zinc-400">
+                      Kemiripan: {(selectedAssignment.duplicateSimilarity * 100).toFixed(1)}%
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="border border-zinc-800 bg-zinc-900/40 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                    Tandai Duplikat (Manual)
+                  </h4>
+                  <span className="text-[11px] text-zinc-500">
+                    Nilai duplikat: {duplicateScore}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs text-zinc-400">Pilih assignment sumber (ID)</label>
+                  <input
+                    list="assignment-options"
+                    value={duplicateSourceId}
+                    onChange={(e) => setDuplicateSourceId(e.target.value)}
+                    className="w-full bg-zinc-950/80 border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-200 font-mono"
+                    placeholder="Contoh: clx123abc..."
+                  />
+                  <datalist id="assignment-options">
+                    {assignments
+                      .filter((a) => a.id !== selectedAssignment.id)
+                      .map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.studentName}
+                        </option>
+                      ))}
+                  </datalist>
+                </div>
+                <Button
+                  onClick={handleMarkDuplicate}
+                  disabled={isMarkingDuplicate}
+                  className="bg-amber-600 hover:bg-amber-500 text-white text-xs cursor-pointer"
+                  size="sm"
+                >
+                  {isMarkingDuplicate ? "Memproses..." : "Tandai Duplikat & Samakan Nilai"}
+                </Button>
+              </div>
+
               {/* AI Feedback */}
               {selectedAssignment.status === "done" && (
                 <div className="space-y-2">
@@ -275,6 +437,7 @@ export default function ResultsTable({
                 {(selectedAssignment.status === "failed" || selectedAssignment.status === "done") && (
                   <Button
                     onClick={async () => {
+                      if (!confirm("Ulangi penilaian untuk tugas ini?")) return;
                       try {
                         const res = await fetch(`/api/assignments/${selectedAssignment.id}/retry`, { method: "POST" });
                         if (!res.ok) throw new Error("Gagal mengantrekan kembali tugas");

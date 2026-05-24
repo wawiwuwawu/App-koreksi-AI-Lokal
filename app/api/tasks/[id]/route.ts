@@ -44,6 +44,14 @@ export async function GET(
         orderBy: { createdAt: "desc" },
         skip,
         take: pageSize,
+        include: {
+          duplicateOf: {
+            select: {
+              id: true,
+              studentName: true,
+            },
+          },
+        },
       }),
       prisma.assignment.count({ where: { taskId } }),
       prisma.assignment.groupBy({
@@ -101,7 +109,7 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const { rubric, windowSize } = body;
+    const { rubric, windowSize, duplicateScore } = body;
 
     const parsedWindowSize = parseInt(windowSize, 10);
     if (isNaN(parsedWindowSize) || parsedWindowSize < 0) {
@@ -130,11 +138,23 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized access to this task" }, { status: 403 });
     }
 
+    const parsedDuplicateScore =
+      duplicateScore === undefined || duplicateScore === null
+        ? task.duplicateScore
+        : parseInt(duplicateScore, 10);
+    if (isNaN(parsedDuplicateScore) || parsedDuplicateScore < 0) {
+      return NextResponse.json(
+        { error: "Nilai duplikat harus berupa angka positif" },
+        { status: 400 }
+      );
+    }
+
     const updatedTask = await prisma.task.update({
       where: { id: taskId },
       data: {
         rubric,
         windowSize: parsedWindowSize,
+        duplicateScore: parsedDuplicateScore,
       },
     });
 
