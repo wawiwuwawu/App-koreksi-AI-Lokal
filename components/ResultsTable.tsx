@@ -12,9 +12,20 @@ import { toast } from "sonner";
 interface ResultsTableProps {
   assignments: AssignmentRecord[];
   onRefresh?: () => void;
+  page?: number;
+  totalPages?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
 }
 
-export default function ResultsTable({ assignments, onRefresh }: ResultsTableProps) {
+export default function ResultsTable({
+  assignments,
+  onRefresh,
+  page = 1,
+  totalPages = 1,
+  totalItems,
+  onPageChange,
+}: ResultsTableProps) {
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentRecord | null>(null);
 
   const getStatusBadge = (status: string) => {
@@ -113,6 +124,37 @@ export default function ResultsTable({ assignments, onRefresh }: ResultsTablePro
               </TableBody>
             </Table>
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 text-xs text-zinc-500">
+              <div>
+                {typeof totalItems === "number"
+                  ? `Menampilkan halaman ${page} dari ${totalPages} (total ${totalItems} data)`
+                  : `Menampilkan halaman ${page} dari ${totalPages}`}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                  onClick={() => onPageChange?.(page - 1)}
+                  disabled={page <= 1}
+                >
+                  Sebelumnya
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                  onClick={() => onPageChange?.(page + 1)}
+                  disabled={page >= totalPages}
+                >
+                  Berikutnya
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

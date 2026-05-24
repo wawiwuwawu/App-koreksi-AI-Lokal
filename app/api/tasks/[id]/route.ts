@@ -8,6 +8,11 @@ export async function GET(
 ) {
   try {
     const { id: taskId } = await params;
+    const url = new URL(req.url);
+    const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+    const pageSizeRaw = parseInt(url.searchParams.get("pageSize") || "25", 10);
+    const pageSize = Math.min(Math.max(pageSizeRaw, 1), 100);
+    const skip = (page - 1) * pageSize;
     const session = req.cookies.get("lecturer_session")?.value;
     if (!session) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -33,10 +38,33 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized access to this task" }, { status: 403 });
     }
 
-    const assignments = await prisma.assignment.findMany({
-      where: { taskId },
-      orderBy: { createdAt: "desc" },
-    });
+    const [assignments, totalAssignments, statusGroups] = await prisma.$transaction([
+      prisma.assignment.findMany({
+        where: { taskId },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: pageSize,
+      }),
+      prisma.assignment.count({ where: { taskId } }),
+      prisma.assignment.groupBy({
+        by: ["status"],
+        where: { taskId },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const statusCounts = {
+      total: totalAssignments,
+      pending: 0,
+      processing: 0,
+      done: 0,
+      failed: 0,
+    };
+    for (const group of statusGroups) {
+      if (group.status in statusCounts) {
+        statusCounts[group.status as keyof typeof statusCounts] = group._count._all;
+      }
+    }
 
     const queueLength = queueService.getQueueLength();
 
@@ -45,6 +73,13 @@ export async function GET(
       assignments,
       queueLength,
       webhookSecret: process.env.WEBHOOK_SECRET || "",
+      statusCounts,
+      pagination: {
+        page,
+        pageSize,
+        total: totalAssignments,
+        totalPages: Math.max(1, Math.ceil(totalAssignments / pageSize)),
+      },
     });
   } catch (error: any) {
     return NextResponse.json(

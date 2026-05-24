@@ -14,6 +14,13 @@ interface StatusPanelProps {
   isLoading: boolean;
   taskId?: string;
   webhookSecret?: string;
+  statusCounts?: {
+    total: number;
+    pending: number;
+    processing: number;
+    done: number;
+    failed: number;
+  };
 }
 
 export default function StatusPanel({
@@ -22,6 +29,7 @@ export default function StatusPanel({
   isLoading,
   taskId = "",
   webhookSecret = "",
+  statusCounts,
 }: StatusPanelProps) {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [copied, setCopied] = useState(false);
@@ -33,11 +41,11 @@ export default function StatusPanel({
     }
   }, []);
 
-  const total = assignments.length;
-  const pending = assignments.filter((a) => a.status === "pending").length;
-  const processing = assignments.filter((a) => a.status === "processing").length;
-  const done = assignments.filter((a) => a.status === "done").length;
-  const failed = assignments.filter((a) => a.status === "failed").length;
+  const total = statusCounts?.total ?? assignments.length;
+  const pending = statusCounts?.pending ?? assignments.filter((a) => a.status === "pending").length;
+  const processing = statusCounts?.processing ?? assignments.filter((a) => a.status === "processing").length;
+  const done = statusCounts?.done ?? assignments.filter((a) => a.status === "done").length;
+  const failed = statusCounts?.failed ?? assignments.filter((a) => a.status === "failed").length;
 
   const copyToClipboard = async () => {
     try {

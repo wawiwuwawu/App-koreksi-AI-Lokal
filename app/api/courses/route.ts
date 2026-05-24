@@ -10,24 +10,60 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const courses = await prisma.course.findMany({
-      where: { lecturerId: session },
-      include: {
-        classes: {
-          include: {
-            tasks: {
-              select: {
-                id: true,
-                title: true,
+    const url = new URL(req.url);
+    const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+    const pageSizeRaw = parseInt(url.searchParams.get("pageSize") || "6", 10);
+    const pageSize = Math.min(Math.max(pageSizeRaw, 1), 50);
+    const skip = (page - 1) * pageSize;
+
+    const [courses, totalCourses, totalClasses, totalTasks] = await prisma.$transaction([
+      prisma.course.findMany({
+        where: { lecturerId: session },
+        include: {
+          classes: {
+            include: {
+              tasks: {
+                select: {
+                  id: true,
+                  title: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: { name: "asc" },
-    });
+        orderBy: { name: "asc" },
+        skip,
+        take: pageSize,
+      }),
+      prisma.course.count({ where: { lecturerId: session } }),
+      prisma.class.count({
+        where: {
+          course: { lecturerId: session },
+        },
+      }),
+      prisma.task.count({
+        where: {
+          class: {
+            course: { lecturerId: session },
+          },
+        },
+      }),
+    ]);
 
-    return NextResponse.json({ courses });
+    return NextResponse.json({
+      courses,
+      pagination: {
+        page,
+        pageSize,
+        total: totalCourses,
+        totalPages: Math.max(1, Math.ceil(totalCourses / pageSize)),
+      },
+      totals: {
+        courses: totalCourses,
+        classes: totalClasses,
+        tasks: totalTasks,
+      },
+    });
   } catch (error: any) {
     return NextResponse.json(
       { error: "Server error", details: error?.message || String(error) },

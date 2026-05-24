@@ -25,6 +25,17 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
   const [task, setTask] = useState<{ title: string; rubric: string; windowSize: number; class: { name: string; course: { name: string } } } | null>(null);
   const [assignments, setAssignments] = useState<AssignmentRecord[]>([]);
   const [queueLength, setQueueLength] = useState(0);
+  const [assignmentPage, setAssignmentPage] = useState(1);
+  const [assignmentPageSize] = useState(25);
+  const [assignmentTotal, setAssignmentTotal] = useState(0);
+  const [assignmentTotalPages, setAssignmentTotalPages] = useState(1);
+  const [statusCounts, setStatusCounts] = useState({
+    total: 0,
+    pending: 0,
+    processing: 0,
+    done: 0,
+    failed: 0,
+  });
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
@@ -56,7 +67,9 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
 
   const fetchTaskData = async () => {
     try {
-      const res = await fetch(`/api/tasks/${taskId}`);
+      const res = await fetch(
+        `/api/tasks/${taskId}?page=${assignmentPage}&pageSize=${assignmentPageSize}`
+      );
       if (!res.ok) throw new Error("Gagal mengambil data tugas.");
       const data = await res.json();
       setTask(data.task);
@@ -64,6 +77,13 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
       setQueueLength(data.queueLength);
       setRubric(data.task.rubric);
       setWindowSize(data.task.windowSize);
+      if (data.pagination) {
+        setAssignmentTotal(data.pagination.total || 0);
+        setAssignmentTotalPages(data.pagination.totalPages || 1);
+      }
+      if (data.statusCounts) {
+        setStatusCounts(data.statusCounts);
+      }
       if (data.webhookSecret) {
         setWebhookSecret(data.webhookSecret);
       }
@@ -109,6 +129,10 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
   useEffect(() => {
     checkAuthAndFetch();
   }, [checkAuthAndFetch]);
+
+  useEffect(() => {
+    if (lecturer) fetchTaskData();
+  }, [assignmentPage, assignmentPageSize, lecturer]);
 
   // Autopoll for assignments
   useEffect(() => {
@@ -235,6 +259,7 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
               isLoading={isLoading}
               taskId={taskId}
               webhookSecret={webhookSecret}
+              statusCounts={statusCounts}
             />
 
             <Card className="border border-zinc-800 bg-zinc-950/80 backdrop-blur-md shadow-2xl text-zinc-100 relative overflow-hidden">
@@ -304,7 +329,14 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
 
           {/* Right Column (Submissions Table) */}
           <div className="lg:col-span-2">
-            <ResultsTable assignments={assignments} onRefresh={fetchTaskData} />
+            <ResultsTable
+              assignments={assignments}
+              onRefresh={fetchTaskData}
+              page={assignmentPage}
+              totalPages={assignmentTotalPages}
+              totalItems={assignmentTotal}
+              onPageChange={setAssignmentPage}
+            />
           </div>
         </div>
       </main>

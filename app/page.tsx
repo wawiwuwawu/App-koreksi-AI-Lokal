@@ -32,6 +32,14 @@ export default function DashboardPage() {
   const router = useRouter();
   const [lecturer, setLecturer] = useState<{ name: string; email: string } | null>(null);
   const [courses, setCourses] = useState<CourseSummary[]>([]);
+  const [coursePage, setCoursePage] = useState(1);
+  const [coursePageSize] = useState(6);
+  const [courseTotalPages, setCourseTotalPages] = useState(1);
+  const [courseTotals, setCourseTotals] = useState({
+    courses: 0,
+    classes: 0,
+    tasks: 0,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [healthStatus, setHealthStatus] = useState<"connected" | "disconnected" | "checking">("checking");
 
@@ -73,10 +81,16 @@ export default function DashboardPage() {
   // Fetch courses managed by logged lecturer
   const fetchCourses = async () => {
     try {
-      const res = await fetch("/api/courses");
+      const res = await fetch(`/api/courses?page=${coursePage}&pageSize=${coursePageSize}`);
       if (!res.ok) throw new Error("Gagal mengambil data mata kuliah.");
       const data = await res.json();
       setCourses(data.courses);
+      if (data.pagination) {
+        setCourseTotalPages(data.pagination.totalPages || 1);
+      }
+      if (data.totals) {
+        setCourseTotals(data.totals);
+      }
     } catch (err: any) {
       toast.error(err?.message || "Gagal memuat mata kuliah.");
     } finally {
@@ -222,11 +236,13 @@ export default function DashboardPage() {
     checkAuth();
   }, [checkAuth]);
 
+  useEffect(() => {
+    if (lecturer) fetchCourses();
+  }, [coursePage, coursePageSize, lecturer]);
+
   // Count helper functions
-  const totalClasses = courses.reduce((acc, course) => acc + course.classes.length, 0);
-  const totalTasks = courses.reduce((acc, course) => 
-    acc + course.classes.reduce((sum, c) => sum + c.tasks.length, 0), 0
-  );
+  const totalClasses = courseTotals.classes;
+  const totalTasks = courseTotals.tasks;
 
   if (isLoading || !lecturer) {
     return (
@@ -306,7 +322,7 @@ export default function DashboardPage() {
             </div>
             <div>
               <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Mata Kuliah</p>
-              <p className="text-2xl font-black mt-0.5 text-white">{courses.length}</p>
+              <p className="text-2xl font-black mt-0.5 text-white">{courseTotals.courses}</p>
             </div>
           </Card>
 
@@ -345,7 +361,7 @@ export default function DashboardPage() {
             </Button>
           </div>
 
-          {courses.length === 0 ? (
+          {courseTotals.courses === 0 ? (
             <div className="border border-dashed border-zinc-800 rounded-xl py-16 text-center text-zinc-500">
               <BookOpen className="h-12 w-12 mx-auto text-zinc-700 mb-3" />
               <p className="text-sm font-medium">Belum ada mata kuliah yang terdaftar.</p>
@@ -455,6 +471,33 @@ export default function DashboardPage() {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          )}
+          {courseTotalPages > 1 && (
+            <div className="flex items-center justify-between text-xs text-zinc-500">
+              <div>Halaman {coursePage} dari {courseTotalPages}</div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                  onClick={() => setCoursePage((p) => Math.max(1, p - 1))}
+                  disabled={coursePage <= 1}
+                >
+                  Sebelumnya
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                  onClick={() => setCoursePage((p) => Math.min(courseTotalPages, p + 1))}
+                  disabled={coursePage >= courseTotalPages}
+                >
+                  Berikutnya
+                </Button>
+              </div>
             </div>
           )}
         </div>
