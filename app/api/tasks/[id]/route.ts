@@ -51,6 +51,12 @@ export async function GET(
               studentName: true,
             },
           },
+          duplicates: {
+            select: {
+              id: true,
+              studentName: true,
+            },
+          },
         },
       }),
       prisma.assignment.count({ where: { taskId } }),

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { AssignmentRecord } from "@/types";
-import { Settings, ArrowLeft, Download, Loader2, Play, RotateCcw } from "lucide-react";
+import { Settings, ArrowLeft, Download, Loader2, Play, RotateCcw, RefreshCcw } from "lucide-react";
 
 interface TaskPageProps {
   params: Promise<{ taskId: string }>;
@@ -47,6 +47,7 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
   const [healthStatus, setHealthStatus] = useState<"connected" | "disconnected" | "checking">("checking");
   const [healthError, setHealthError] = useState<string | null>(null);
   const [isRetryingFailed, setIsRetryingFailed] = useState(false);
+  const [isRescanning, setIsRescanning] = useState(false);
 
   // Authenticate and load task initial details
   const checkAuthAndFetch = useCallback(async () => {
@@ -145,6 +146,24 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
     }
   };
 
+  const handleRescanDuplicates = async () => {
+    if (!confirm("Apakah Anda yakin ingin memindai ulang indikasi duplikat pada seluruh tugas dalam task ini? Ini akan memperbarui status plagiarisme.")) return;
+    setIsRescanning(true);
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/rescan`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal memindai ulang duplikasi");
+      toast.success(
+        `Pemindaian selesai! ${data.details?.newDuplicatesFlagged} duplikat baru ditemukan, ${data.details?.resetDuplicates} status duplikat direset.`
+      );
+      fetchTaskData();
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal memindai ulang duplikasi");
+    } finally {
+      setIsRescanning(false);
+    }
+  };
+
   useEffect(() => {
     checkAuthAndFetch();
   }, [checkAuthAndFetch]);
@@ -240,6 +259,14 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
             </h1>
           </div>
           <div className="flex gap-2">
+            <Button
+              onClick={handleRescanDuplicates}
+              disabled={isRescanning}
+              className="inline-flex items-center justify-center rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm font-semibold hover:bg-amber-500/20 px-4 py-2 transition-all cursor-pointer shadow-lg"
+            >
+              <RefreshCcw className="h-4 w-4 mr-2" />
+              {isRescanning ? "Memindai..." : "Pindai Ulang Duplikasi"}
+            </Button>
             <Button
               onClick={handleRetryFailed}
               disabled={isRetryingFailed}

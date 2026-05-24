@@ -26,6 +26,12 @@ export async function GET(req: Request) {
               studentName: true,
             },
           },
+          duplicates: {
+            select: {
+              id: true,
+              studentName: true,
+            },
+          },
         },
       }),
       prisma.assignment.count(),

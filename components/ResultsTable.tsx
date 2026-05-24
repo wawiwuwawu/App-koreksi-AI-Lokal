@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { AssignmentRecord } from "@/types";
-import { ExternalLink, Eye, AlertTriangle, X, HelpCircle, RotateCcw } from "lucide-react";
+import { ExternalLink, Eye, AlertTriangle, X, HelpCircle, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface ResultsTableProps {
@@ -31,6 +31,20 @@ export default function ResultsTable({
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentRecord | null>(null);
   const [duplicateSourceId, setDuplicateSourceId] = useState("");
   const [isMarkingDuplicate, setIsMarkingDuplicate] = useState(false);
+
+  const [manualScore, setManualScore] = useState("");
+  const [manualFeedback, setManualFeedback] = useState("");
+  const [isUpdatingManual, setIsUpdatingManual] = useState(false);
+
+  useEffect(() => {
+    if (selectedAssignment) {
+      setManualScore(selectedAssignment.score !== null ? String(selectedAssignment.score) : "");
+      setManualFeedback(selectedAssignment.feedback || "");
+    } else {
+      setManualScore("");
+      setManualFeedback("");
+    }
+  }, [selectedAssignment]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -104,6 +118,56 @@ export default function ResultsTable({
     }
   };
 
+  const handleSaveManualGrade = async () => {
+    if (!selectedAssignment) return;
+    setIsUpdatingManual(true);
+    try {
+      const res = await fetch(`/api/assignments/${selectedAssignment.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          score: manualScore,
+          feedback: manualFeedback,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menyimpan koreksi manual");
+      
+      toast.success("Koreksi manual berhasil disimpan!");
+      if (onRefresh) onRefresh();
+      setSelectedAssignment(data.assignment || selectedAssignment);
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal menyimpan.");
+    } finally {
+      setIsUpdatingManual(false);
+    }
+  };
+
+  const handleCancelDuplicate = async () => {
+    if (!selectedAssignment) return;
+    if (!confirm("Batalkan status duplikat untuk tugas ini? Nilai duplikat akan dibersihkan.")) return;
+    setIsUpdatingManual(true);
+    try {
+      const res = await fetch(`/api/assignments/${selectedAssignment.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resetDuplicate: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal membatalkan status duplikat");
+      
+      toast.success("Status duplikat dibatalkan!");
+      if (onRefresh) onRefresh();
+      setSelectedAssignment(data.assignment || selectedAssignment);
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal membatalkan status duplikat.");
+    } finally {
+      setIsUpdatingManual(false);
+    }
+  };
+
   const handleRetry = async (assignmentId: string) => {
     if (!confirm("Ulangi penilaian untuk tugas ini?")) return;
     try {
@@ -161,11 +225,29 @@ export default function ResultsTable({
                               </Badge>
                               <button
                                 type="button"
-                                className="underline decoration-dotted hover:text-amber-200"
+                                className="underline decoration-dotted hover:text-amber-200 text-[11px]"
                                 onClick={() => openAssignmentById(assignment.duplicateOf!.id)}
                               >
                                 {assignment.duplicateOf.studentName}
                               </button>
+                            </div>
+                          )}
+                          {!assignment.isDuplicate && assignment.duplicates && assignment.duplicates.length > 0 && (
+                            <div className="flex items-center flex-wrap gap-1 text-[11px] text-amber-400/80">
+                              <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] py-0 px-1">
+                                Sumber Duplikat
+                              </Badge>
+                              <span className="text-[10px] text-zinc-500">Diduplikasi oleh:</span>
+                              {assignment.duplicates.map((dup, idx) => (
+                                <button
+                                  key={dup.id}
+                                  type="button"
+                                  className="underline decoration-dotted hover:text-amber-200 text-[11px]"
+                                  onClick={() => openAssignmentById(dup.id)}
+                                >
+                                  {dup.studentName}{idx < assignment.duplicates!.length - 1 ? ", " : ""}
+                                </button>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -189,7 +271,7 @@ export default function ResultsTable({
                         )}
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-center gap-1.5">
                           {assignment.status === "failed" && (
                             <Button
                               onClick={() => handleRetry(assignment.id)}
@@ -197,7 +279,7 @@ export default function ResultsTable({
                               size="sm"
                               className="h-8 border-rose-500/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20"
                             >
-                              <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Retry
+                              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Retry
                             </Button>
                           )}
                           <Button
@@ -209,7 +291,26 @@ export default function ResultsTable({
                             size="sm"
                             className="h-8 text-zinc-350 hover:text-white hover:bg-zinc-800"
                           >
-                            <Eye className="h-4 w-4 mr-1.5 text-zinc-400" /> Detail
+                            <Eye className="h-4 w-4 mr-1 text-zinc-400" /> Detail
+                          </Button>
+                          <Button
+                            onClick={async () => {
+                              if (confirm(`Apakah Anda yakin ingin menghapus tugas dari ${assignment.studentName}?`)) {
+                                try {
+                                  const res = await fetch(`/api/assignments/${assignment.id}`, { method: "DELETE" });
+                                  if (!res.ok) throw new Error("Gagal menghapus tugas");
+                                  toast.success("Tugas berhasil dihapus.");
+                                  if (onRefresh) onRefresh();
+                                } catch (err: any) {
+                                  toast.error(err?.message || "Gagal menghapus.");
+                                }
+                              }
+                            }}
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-rose-400 hover:text-rose-200 hover:bg-rose-950/40"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1 text-rose-500" /> Hapus
                           </Button>
                         </div>
                       </TableCell>
@@ -309,7 +410,7 @@ export default function ResultsTable({
                 </div>
               )}
 
-              {(selectedAssignment.isDuplicate || selectedAssignment.duplicateReason) && (
+              {((selectedAssignment.isDuplicate || selectedAssignment.duplicateReason) || (selectedAssignment.duplicates && selectedAssignment.duplicates.length > 0)) && (
                 <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-4 text-sm text-amber-300 space-y-2">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="h-5 w-5 shrink-0" />
@@ -317,7 +418,7 @@ export default function ResultsTable({
                   </div>
                   {selectedAssignment.duplicateOf && (
                     <div className="text-xs text-zinc-300">
-                      Sumber: {" "}
+                      Tugas ini menduplikasi tugas dari:{" "}
                       <button
                         type="button"
                         className="underline decoration-dotted hover:text-amber-200"
@@ -325,6 +426,21 @@ export default function ResultsTable({
                       >
                         {selectedAssignment.duplicateOf.studentName}
                       </button>
+                    </div>
+                  )}
+                  {selectedAssignment.duplicates && selectedAssignment.duplicates.length > 0 && (
+                    <div className="text-xs text-zinc-300 flex flex-wrap gap-1 items-center">
+                      <span>Tugas ini diduplikasi oleh:</span>
+                      {selectedAssignment.duplicates.map((dup, idx) => (
+                        <button
+                          key={dup.id}
+                          type="button"
+                          className="underline decoration-dotted hover:text-amber-200"
+                          onClick={() => openAssignmentById(dup.id)}
+                        >
+                          {dup.studentName}{idx < selectedAssignment.duplicates!.length - 1 ? ", " : ""}
+                        </button>
+                      ))}
                     </div>
                   )}
                   {selectedAssignment.duplicateReason && (
@@ -375,6 +491,63 @@ export default function ResultsTable({
                   {isMarkingDuplicate ? "Memproses..." : "Tandai Duplikat & Samakan Nilai"}
                 </Button>
               </div>
+
+              {/* Koreksi Manual */}
+              {selectedAssignment.status === "done" && (
+                <div className="border border-zinc-800 bg-zinc-900/40 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                      Koreksi Manual & Nilai
+                    </h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-zinc-400">Nilai Manual (0 - 100)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={manualScore}
+                        onChange={(e) => setManualScore(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-200"
+                        placeholder="Nilai baru..."
+                      />
+                    </div>
+                    {selectedAssignment.isDuplicate && (
+                      <div className="flex items-end">
+                        <Button
+                          onClick={handleCancelDuplicate}
+                          disabled={isUpdatingManual}
+                          type="button"
+                          className="bg-amber-600/20 hover:bg-amber-600/35 text-amber-300 border border-amber-500/30 text-xs w-full py-2.5 h-9 cursor-pointer"
+                        >
+                          Batalkan Status Duplikat
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-zinc-400">Feedback Dosen</label>
+                    <textarea
+                      value={manualFeedback}
+                      onChange={(e) => setManualFeedback(e.target.value)}
+                      className="w-full h-20 bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-200 leading-relaxed"
+                      placeholder="Masukkan koreksi feedback manual..."
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      onClick={handleSaveManualGrade}
+                      disabled={isUpdatingManual}
+                      type="button"
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs cursor-pointer"
+                      size="sm"
+                    >
+                      {isUpdatingManual ? "Menyimpan..." : "Simpan Nilai & Feedback"}
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {/* AI Feedback */}
               {selectedAssignment.status === "done" && (

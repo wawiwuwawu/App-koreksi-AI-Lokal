@@ -29,6 +29,10 @@ export interface AssignmentRecord {
     id: string;
     studentName: string;
   } | null;
+  duplicates?: {
+    id: string;
+    studentName: string;
+  }[] | null;
   createdAt: Date;
 }
 

@@ -138,6 +138,9 @@ export async function processSubmission(assignmentId: string) {
         status: "done",
       },
     });
+
+    // 8. Run Reverse Check to detect duplicates among other assignments
+    await runReverseCheck(assignmentId, taskId, duplicateScore);
   } catch (error: any) {
     console.error(
       `[GradingPipeline] Failure processing submission:`,
@@ -206,7 +209,7 @@ function parseImageHashes(raw: string | null): string[] {
   }
 }
 
-async function findDuplicateCandidate(params: {
+export async function findDuplicateCandidate(params: {
   assignmentId: string;
   taskId: string;
   textHash: string;
@@ -237,19 +240,6 @@ async function findDuplicateCandidate(params: {
   let best: { id: string; studentName: string; reason: string; similarity: number } | null = null;
 
   for (const candidate of candidates) {
-    const candidateImageHashes = parseImageHashes(candidate.imageHashes);
-    const hasImageMatch =
-      imageHashes.length > 0 &&
-      candidateImageHashes.some((hash) => imageHashes.includes(hash));
-    if (hasImageMatch) {
-      return {
-        id: candidate.id,
-        studentName: candidate.studentName,
-        reason: "image-match",
-        similarity: 1,
-      };
-    }
-
     if (candidate.textHash && textHash && candidate.textHash === textHash) {
       best = {
         id: candidate.id,
@@ -265,7 +255,30 @@ async function findDuplicateCandidate(params: {
       .filter((token) => token.length > 2);
     const candidateShingles = buildShingles(candidateTokens, 5);
     const similarity = jaccardSimilarity(currentShingles, candidateShingles);
-    if (similarity >= 0.8) {
+
+    // Check image matches
+    const candidateImageHashes = parseImageHashes(candidate.imageHashes);
+    const matchingImagesCount = imageHashes.filter((hash) =>
+      candidateImageHashes.includes(hash)
+    ).length;
+
+    // A visual match requires:
+    // - Either at least 2 distinct image matches (strong visual duplication)
+    // - Or 1 image match combined with some text similarity (>= 0.4 Jaccard) to avoid matching common/template logos in different contexts.
+    const isVisualDuplicate =
+      matchingImagesCount >= 2 || (matchingImagesCount === 1 && similarity >= 0.4);
+
+    if (isVisualDuplicate) {
+      return {
+        id: candidate.id,
+        studentName: candidate.studentName,
+        reason: "image-match",
+        similarity: 1,
+      };
+    }
+
+    // Lowered Jaccard threshold from 0.8 to 0.7 for text similarity
+    if (similarity >= 0.7) {
       if (!best || similarity > best.similarity) {
         best = {
           id: candidate.id,
@@ -278,4 +291,89 @@ async function findDuplicateCandidate(params: {
   }
 
   return best;
+}
+
+async function runReverseCheck(assignmentId: string, taskId: string, duplicateScore: number) {
+  console.log(`[GradingPipeline] Running Reverse Check for assignment: ${assignmentId}...`);
+  const current = await prisma.assignment.findUnique({
+    where: { id: assignmentId },
+  });
+  if (!current || !current.extractedText) return;
+
+  const others = await prisma.assignment.findMany({
+    where: {
+      taskId,
+      id: { not: assignmentId },
+      status: "done",
+    },
+  });
+
+  const currentTokens = normalizeText(current.extractedText)
+    .split(" ")
+    .filter((token) => token.length > 2);
+  const currentShingles = buildShingles(currentTokens, 5);
+  const currentImageHashes = parseImageHashes(current.imageHashes);
+
+  for (const other of others) {
+    if (other.isDuplicate) continue;
+
+    let isDuplicate = false;
+    let reason = "";
+    let similarity = 0;
+
+    if (current.textHash && other.textHash && current.textHash === other.textHash) {
+      isDuplicate = true;
+      reason = "text-identical";
+      similarity = 1;
+    } else {
+      const otherTokens = normalizeText(other.extractedText)
+        .split(" ")
+        .filter((token) => token.length > 2);
+      const otherShingles = buildShingles(otherTokens, 5);
+      const jaccard = jaccardSimilarity(currentShingles, otherShingles);
+
+      const otherImageHashes = parseImageHashes(other.imageHashes);
+      const matchingImagesCount = currentImageHashes.filter((hash) =>
+        otherImageHashes.includes(hash)
+      ).length;
+
+      const isVisualDuplicate =
+        matchingImagesCount >= 2 || (matchingImagesCount === 1 && jaccard >= 0.4);
+
+      if (isVisualDuplicate) {
+        isDuplicate = true;
+        reason = "image-match";
+        similarity = 1;
+      } else if (jaccard >= 0.7) {
+        isDuplicate = true;
+        reason = "text-similarity";
+        similarity = jaccard;
+      }
+    }
+
+    if (isDuplicate) {
+      console.log(`[GradingPipeline] Reverse Check found duplicate: ${other.studentName} is duplicate of ${current.studentName} (${reason})`);
+      const duplicateNote = `Duplikat terdeteksi (${reason}) dengan ${current.studentName} (Reverse Check). Nilai disamakan menjadi ${duplicateScore}.`;
+      await prisma.$transaction([
+        prisma.assignment.update({
+          where: { id: other.id },
+          data: {
+            isDuplicate: true,
+            duplicateOfId: current.id,
+            duplicateReason: reason,
+            duplicateSimilarity: similarity,
+            score: duplicateScore,
+            plagiarismNote: duplicateNote,
+          },
+        }),
+        prisma.assignment.update({
+          where: { id: current.id },
+          data: {
+            score: duplicateScore,
+            plagiarismNote: `Nilai disamakan karena duplikat dengan ${other.studentName}.`,
+          },
+        }),
+      ]);
+    }
+  }
 }
