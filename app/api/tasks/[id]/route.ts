@@ -57,6 +57,7 @@ export async function GET(
       prisma.assignment.groupBy({
         by: ["status"],
         where: { taskId },
+        orderBy: { status: "asc" },
         _count: { _all: true },
       }),
     ]);
