@@ -61,7 +61,7 @@ export async function processPDF(
       const pages = screenshotResult.pages || [];
       base64Images = pages.slice(0, 3).map((page) => page.dataUrl);
       const hashPromises = pages
-        .slice(1) // Skip page 1 (cover page / template) for duplicate hashing
+        .slice(2) // Skip page 1 & 2 (cover & table of contents/template) for duplicate hashing
         .map(async (page) => {
           const raw = page.dataUrl || "";
           const base64 = raw.includes(",") ? raw.split(",")[1] : raw;

@@ -123,10 +123,21 @@ export async function processSubmission(assignmentId: string) {
       rubric,
     });
 
-    // 7. Update DB with success outcomes
-    console.log(
-      `[GradingPipeline] Process complete. Student: ${studentName}, Score: ${result.score}`
-    );
+    // Try to find if the AI's plagiarism note mentions any other student's name
+    let aiDuplicateOfId: string | null = null;
+    if (result.plagiarismNote) {
+      const otherStudents = await prisma.assignment.findMany({
+        where: { taskId, id: { not: assignmentId } },
+        select: { id: true, studentName: true },
+      });
+      const matchedStudent = otherStudents.find((other) =>
+        result.plagiarismNote.toLowerCase().includes(other.studentName.toLowerCase())
+      );
+      if (matchedStudent) {
+        aiDuplicateOfId = matchedStudent.id;
+      }
+    }
+
     await prisma.assignment.update({
       where: { id: assignmentId },
       data: {
@@ -138,6 +149,7 @@ export async function processSubmission(assignmentId: string) {
         feedback: result.feedback,
         plagiarismNote: result.plagiarismNote,
         detectionSource: result.plagiarismNote ? "ai" : null,
+        duplicateOfId: aiDuplicateOfId,
         status: "done",
       },
     });

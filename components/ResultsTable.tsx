@@ -82,6 +82,12 @@ export default function ResultsTable({
             Analisis AI
           </Badge>
         );
+      case "ai-confirmed":
+        return (
+          <Badge className="bg-red-500/15 text-red-400 border border-red-500/30 text-[10px] py-0 px-1.5 font-normal">
+            AI Dikonfirmasi
+          </Badge>
+        );
       default:
         return null;
     }
@@ -444,6 +450,56 @@ export default function ResultsTable({
                     <p className="mt-1 leading-relaxed text-zinc-300">
                       {selectedAssignment.plagiarismNote}
                     </p>
+                    {selectedAssignment.detectionSource === "ai" && (
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          onClick={async () => {
+                            if (!confirm("Konfirmasi indikasi plagiarisme dari AI? Nilai mahasiswa ini akan disesuaikan menjadi nilai duplikat.")) return;
+                            try {
+                              const res = await fetch(`/api/assignments/${selectedAssignment.id}/confirm-plagiarism`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ action: "confirm" }),
+                              });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error || "Gagal mengkonfirmasi plagiarisme");
+                              toast.success("Plagiarisme dikonfirmasi. Nilai diperbarui.");
+                              if (onRefresh) onRefresh();
+                              setSelectedAssignment(data.assignment);
+                            } catch (err: any) {
+                              toast.error(err?.message || "Gagal memproses.");
+                            }
+                          }}
+                          className="bg-red-700 hover:bg-red-600 text-white border-0 text-xs py-1 h-8 cursor-pointer"
+                          size="sm"
+                        >
+                          Konfirmasi & Turunkan Nilai
+                        </Button>
+                        <Button
+                          onClick={async () => {
+                            if (!confirm("Abaikan indikasi plagiarisme AI untuk tugas ini?")) return;
+                            try {
+                              const res = await fetch(`/api/assignments/${selectedAssignment.id}/confirm-plagiarism`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ action: "dismiss" }),
+                              });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error || "Gagal mengabaikan indikasi");
+                              toast.success("Indikasi plagiarisme diabaikan.");
+                              if (onRefresh) onRefresh();
+                              setSelectedAssignment(data.assignment);
+                            } catch (err: any) {
+                              toast.error(err?.message || "Gagal memproses.");
+                            }
+                          }}
+                          className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 text-xs py-1 h-8 cursor-pointer"
+                          size="sm"
+                        >
+                          Abaikan Indikasi
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -630,15 +686,44 @@ export default function ResultsTable({
                 </div>
               )}
 
-              {/* Extracted Text */}
+              {/* Extracted Text & Side-by-Side Comparison */}
               {selectedAssignment.extractedText && (
-                <div className="space-y-2">
-                  <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                    Teks Ekstraksi PDF
-                  </h4>
-                  <div className="bg-zinc-900/60 border border-zinc-800 p-4 rounded-lg text-xs font-mono text-zinc-400 max-h-48 overflow-y-auto whitespace-pre-wrap select-all">
-                    {selectedAssignment.extractedText}
-                  </div>
+                <div className="space-y-4">
+                  {selectedAssignment.duplicateOf && selectedAssignment.duplicateOf.extractedText ? (
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                        Perbandingan Teks (Side-by-Side)
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <div className="text-xs font-medium text-zinc-400">
+                            Laporan: {selectedAssignment.studentName}
+                          </div>
+                          <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-lg text-xs font-mono text-zinc-300 h-72 overflow-y-auto whitespace-pre-wrap select-all">
+                            {selectedAssignment.extractedText}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-xs font-medium text-amber-400/95 flex items-center gap-1.5">
+                            <span>Pembanding: {selectedAssignment.duplicateOf.studentName}</span>
+                            {getDetectionSourceBadge(selectedAssignment.detectionSource)}
+                          </div>
+                          <div className="bg-amber-950/10 border border-amber-900/20 p-4 rounded-lg text-xs font-mono text-zinc-300 h-72 overflow-y-auto whitespace-pre-wrap select-all">
+                            {selectedAssignment.duplicateOf.extractedText}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                        Teks Ekstraksi PDF
+                      </h4>
+                      <div className="bg-zinc-900/60 border border-zinc-800 p-4 rounded-lg text-xs font-mono text-zinc-400 max-h-48 overflow-y-auto whitespace-pre-wrap select-all">
+                        {selectedAssignment.extractedText}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

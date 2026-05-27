@@ -29,6 +29,7 @@ export interface AssignmentRecord {
   duplicateOf?: {
     id: string;
     studentName: string;
+    extractedText?: string;
   } | null;
   duplicates?: {
     id: string;
