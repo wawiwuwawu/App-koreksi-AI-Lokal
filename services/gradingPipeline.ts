@@ -259,30 +259,35 @@ export async function findDuplicateCandidate(params: {
     const candidateShingles = buildShingles(candidateTokens, 5);
     const similarity = jaccardSimilarity(currentShingles, candidateShingles);
 
-    // Check image matches using Hamming Distance (threshold <= 6)
+    // Check image matches using Hamming Distance (threshold <= 5, stricter to reduce template false positives)
     const candidateImageHashes = parseImageHashes(candidate.imageHashes);
     let matchingImagesCount = 0;
     for (const currentHash of imageHashes) {
       const hasMatch = candidateImageHashes.some(
-        (candHash) => computeHammingDistance(currentHash, candHash) <= 6
+        (candHash) => computeHammingDistance(currentHash, candHash) <= 5
       );
       if (hasMatch) {
         matchingImagesCount++;
       }
     }
 
-    // A visual match requires:
-    // - Either at least 2 distinct image matches (strong visual duplication)
-    // - Or 1 image match combined with some text similarity (>= 0.4 Jaccard) to avoid matching common/template logos in different contexts.
+    // A visual match requires cross-validation with text similarity to prevent
+    // false positives from template-based documents (same header/footer/layout).
+    // Thresholds:
+    // - 3+ image matches: likely a real visual clone, but still require minimal text overlap (>= 0.2 Jaccard)
+    // - 2 image matches: requires moderate text similarity (>= 0.3 Jaccard)
+    // - 1 image match: requires strong text similarity (>= 0.5 Jaccard)
     const isVisualDuplicate =
-      matchingImagesCount >= 2 || (matchingImagesCount === 1 && similarity >= 0.4);
+      (matchingImagesCount >= 3 && similarity >= 0.2) ||
+      (matchingImagesCount === 2 && similarity >= 0.3) ||
+      (matchingImagesCount === 1 && similarity >= 0.5);
 
     if (isVisualDuplicate) {
       return {
         id: candidate.id,
         studentName: candidate.studentName,
         reason: "image-match",
-        similarity: 1,
+        similarity: Math.max(similarity, matchingImagesCount / Math.max(imageHashes.length, 1)),
       };
     }
 
@@ -345,20 +350,23 @@ async function runReverseCheck(assignmentId: string, taskId: string, duplicateSc
       let matchingImagesCount = 0;
       for (const currentHash of currentImageHashes) {
         const hasMatch = otherImageHashes.some(
-          (othHash) => computeHammingDistance(currentHash, othHash) <= 6
+          (othHash) => computeHammingDistance(currentHash, othHash) <= 5
         );
         if (hasMatch) {
           matchingImagesCount++;
         }
       }
 
+      // Same cross-validation thresholds as forward check
       const isVisualDuplicate =
-        matchingImagesCount >= 2 || (matchingImagesCount === 1 && jaccard >= 0.4);
+        (matchingImagesCount >= 3 && jaccard >= 0.2) ||
+        (matchingImagesCount === 2 && jaccard >= 0.3) ||
+        (matchingImagesCount === 1 && jaccard >= 0.5);
 
       if (isVisualDuplicate) {
         isDuplicate = true;
         reason = "image-match";
-        similarity = 1;
+        similarity = Math.max(jaccard, matchingImagesCount / Math.max(currentImageHashes.length, 1));
       } else if (jaccard >= 0.7) {
         isDuplicate = true;
         reason = "text-similarity";
