@@ -4,6 +4,7 @@ import { processDocument } from "./documentService";
 import { getSlidingWindowContext } from "./memoryService";
 import { evaluateAssignment } from "./aiService";
 import { createHash } from "crypto";
+import { computeHammingDistance } from "./hashUtils";
 
 /**
  * Orchestrates the full AI grading workflow:
@@ -87,6 +88,7 @@ export async function processSubmission(assignmentId: string) {
             duplicateOfId: duplicateCandidate.id,
             duplicateReason: duplicateCandidate.reason,
             duplicateSimilarity: duplicateCandidate.similarity,
+            detectionSource: "deterministic",
             score: duplicateScore,
             status: "done",
             plagiarismNote: duplicateNote,
@@ -135,6 +137,7 @@ export async function processSubmission(assignmentId: string) {
         score: result.score,
         feedback: result.feedback,
         plagiarismNote: result.plagiarismNote,
+        detectionSource: result.plagiarismNote ? "ai" : null,
         status: "done",
       },
     });
@@ -256,11 +259,17 @@ export async function findDuplicateCandidate(params: {
     const candidateShingles = buildShingles(candidateTokens, 5);
     const similarity = jaccardSimilarity(currentShingles, candidateShingles);
 
-    // Check image matches
+    // Check image matches using Hamming Distance (threshold <= 6)
     const candidateImageHashes = parseImageHashes(candidate.imageHashes);
-    const matchingImagesCount = imageHashes.filter((hash) =>
-      candidateImageHashes.includes(hash)
-    ).length;
+    let matchingImagesCount = 0;
+    for (const currentHash of imageHashes) {
+      const hasMatch = candidateImageHashes.some(
+        (candHash) => computeHammingDistance(currentHash, candHash) <= 6
+      );
+      if (hasMatch) {
+        matchingImagesCount++;
+      }
+    }
 
     // A visual match requires:
     // - Either at least 2 distinct image matches (strong visual duplication)
@@ -333,9 +342,15 @@ async function runReverseCheck(assignmentId: string, taskId: string, duplicateSc
       const jaccard = jaccardSimilarity(currentShingles, otherShingles);
 
       const otherImageHashes = parseImageHashes(other.imageHashes);
-      const matchingImagesCount = currentImageHashes.filter((hash) =>
-        otherImageHashes.includes(hash)
-      ).length;
+      let matchingImagesCount = 0;
+      for (const currentHash of currentImageHashes) {
+        const hasMatch = otherImageHashes.some(
+          (othHash) => computeHammingDistance(currentHash, othHash) <= 6
+        );
+        if (hasMatch) {
+          matchingImagesCount++;
+        }
+      }
 
       const isVisualDuplicate =
         matchingImagesCount >= 2 || (matchingImagesCount === 1 && jaccard >= 0.4);
@@ -362,6 +377,7 @@ async function runReverseCheck(assignmentId: string, taskId: string, duplicateSc
             duplicateOfId: current.id,
             duplicateReason: reason,
             duplicateSimilarity: similarity,
+            detectionSource: "deterministic-reverse",
             score: duplicateScore,
             plagiarismNote: duplicateNote,
           },

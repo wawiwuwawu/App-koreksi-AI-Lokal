@@ -61,6 +61,32 @@ export default function ResultsTable({
     }
   };
 
+  const getDetectionSourceBadge = (source: string | null | undefined) => {
+    if (!source) return null;
+    switch (source) {
+      case "deterministic":
+        return (
+          <Badge className="bg-blue-500/15 text-blue-400 border border-blue-500/30 text-[10px] py-0 px-1.5 font-normal">
+            Deterministik
+          </Badge>
+        );
+      case "deterministic-reverse":
+        return (
+          <Badge className="bg-purple-500/15 text-purple-400 border border-purple-500/30 text-[10px] py-0 px-1.5 font-normal">
+            Reverse Check
+          </Badge>
+        );
+      case "ai":
+        return (
+          <Badge className="bg-orange-500/15 text-orange-400 border border-orange-500/30 text-[10px] py-0 px-1.5 font-normal">
+            Analisis AI
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
   const formatDate = (dateInput: Date | string) => {
     const d = new Date(dateInput);
     return d.toLocaleString("id-ID", {
@@ -223,6 +249,7 @@ export default function ResultsTable({
                               <Badge className="bg-amber-500/15 text-amber-300 border border-amber-500/30">
                                 Duplikat
                               </Badge>
+                              {getDetectionSourceBadge(assignment.detectionSource)}
                               <button
                                 type="button"
                                 className="underline decoration-dotted hover:text-amber-200 text-[11px]"
@@ -230,6 +257,14 @@ export default function ResultsTable({
                               >
                                 {assignment.duplicateOf.studentName}
                               </button>
+                            </div>
+                          )}
+                          {!assignment.isDuplicate && assignment.plagiarismNote && assignment.detectionSource === "ai" && (
+                            <div className="flex items-center gap-2 text-[11px] text-zinc-400">
+                              {getDetectionSourceBadge("ai")}
+                              <span className="text-[10px] text-amber-400/80 truncate max-w-[200px] italic">
+                                {assignment.plagiarismNote}
+                              </span>
                             </div>
                           )}
                           {!assignment.isDuplicate && assignment.duplicates && assignment.duplicates.length > 0 && (
@@ -401,8 +436,11 @@ export default function ResultsTable({
               {selectedAssignment.status === "done" && selectedAssignment.plagiarismNote && (
                 <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-4 text-sm text-amber-300 flex items-start gap-3">
                   <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="font-semibold text-amber-200">Indikasi Kemiripan / Plagiarisme</h4>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-amber-200">Indikasi Kemiripan / Plagiarisme</h4>
+                      {getDetectionSourceBadge(selectedAssignment.detectionSource)}
+                    </div>
                     <p className="mt-1 leading-relaxed text-zinc-300">
                       {selectedAssignment.plagiarismNote}
                     </p>
@@ -415,6 +453,7 @@ export default function ResultsTable({
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="h-5 w-5 shrink-0" />
                     <h4 className="font-semibold text-amber-200">Status Duplikat</h4>
+                    {getDetectionSourceBadge(selectedAssignment.detectionSource)}
                   </div>
                   {selectedAssignment.duplicateOf && (
                     <div className="text-xs text-zinc-300">

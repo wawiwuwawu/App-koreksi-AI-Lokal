@@ -75,11 +75,12 @@ export async function evaluateAssignment({
   rubric,
 }: EvaluateParams): Promise<AIGradingResult> {
   // Lazy-initialize connection config to support runtime env changes
-  const baseURL = process.env.LM_STUDIO_URL || "http://localhost:1234/v1";
-  const modelName = process.env.LM_STUDIO_MODEL || "google/gemma-4-e2b";
+  const baseURL = process.env.AI_BASE_URL || process.env.LM_STUDIO_URL || "http://localhost:1234/v1";
+  const modelName = process.env.AI_MODEL || process.env.LM_STUDIO_MODEL || "google/gemma-4-e2b";
+  const apiKey = process.env.AI_API_KEY || "not-needed-for-local-lm-studio";
 
   const openai = new OpenAI({
-    apiKey: "not-needed-for-local-lm-studio",
+    apiKey,
     baseURL,
   });
 

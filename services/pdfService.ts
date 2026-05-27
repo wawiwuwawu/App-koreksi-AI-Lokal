@@ -1,5 +1,6 @@
 import { PDFParse } from "pdf-parse";
 import { createHash } from "crypto";
+import { computeDHash } from "./hashUtils";
 
 // Extract Google Drive file ID from standard view or open URL formats
 export function extractDriveFileId(url: string): string {
@@ -59,16 +60,16 @@ export async function processPDF(
       });
       const pages = screenshotResult.pages || [];
       base64Images = pages.slice(0, 3).map((page) => page.dataUrl);
-      imageHashes = pages
+      const hashPromises = pages
         .slice(1) // Skip page 1 (cover page / template) for duplicate hashing
-        .map((page) => {
+        .map(async (page) => {
           const raw = page.dataUrl || "";
           const base64 = raw.includes(",") ? raw.split(",")[1] : raw;
           if (!base64) return null;
-          const bufferData = Buffer.from(base64, "base64");
-          return createHash("sha256").update(bufferData).digest("hex");
-        })
-        .filter((hash): hash is string => Boolean(hash));
+          return computeDHash(base64);
+        });
+      const resolvedHashes = await Promise.all(hashPromises);
+      imageHashes = resolvedHashes.filter((hash): hash is string => Boolean(hash));
     } catch (screenshotError) {
       console.error("[pdfService] Failed to render screenshots from PDF:", screenshotError);
       // Fallback: we still have the extracted text, so keep going

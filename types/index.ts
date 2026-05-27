@@ -25,6 +25,7 @@ export interface AssignmentRecord {
   duplicateOfId?: string | null;
   duplicateReason?: string | null;
   duplicateSimilarity?: number | null;
+  detectionSource?: string | null;
   duplicateOf?: {
     id: string;
     studentName: string;

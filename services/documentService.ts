@@ -1,6 +1,7 @@
 import { processPDF } from "./pdfService";
 import mammoth from "mammoth";
 import { createHash } from "crypto";
+import { computeDHash } from "./hashUtils";
 
 /**
  * Detect file type based on standard magic bytes signature:
@@ -51,8 +52,7 @@ export async function processDOCX(
           const dataUrl = `data:${image.contentType};base64,${imageBase64}`;
           base64Images.push(dataUrl);
 
-          const rawBuffer = Buffer.from(imageBase64, "base64");
-          const hash = createHash("sha256").update(rawBuffer).digest("hex");
+          const hash = await computeDHash(imageBase64);
           imageHashes.push(hash);
         } catch (imgErr) {
           console.error("[documentService] Failed to read docx embedded image:", imgErr);
