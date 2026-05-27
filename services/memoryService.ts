@@ -33,8 +33,8 @@ export async function getSlidingWindowContext(limit: number, taskId: string): Pr
       .map((ass, index) => {
         // Truncate comparison text to prevent overloading the local LLM's context window
         const truncatedText =
-          ass.extractedText.length > 1000
-            ? ass.extractedText.substring(0, 1000) + "... [teks dipotong]"
+          ass.extractedText.length > 3000
+            ? ass.extractedText.substring(0, 3000) + "... [teks dipotong]"
             : ass.extractedText;
 
         return `TUGAS PEMBANDING #${index + 1}:
