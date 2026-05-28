@@ -105,13 +105,6 @@ export default function ResultsTable({
   };
 
   const openAssignmentById = async (assignmentId: string) => {
-    const localMatch = assignments.find((a) => a.id === assignmentId);
-    if (localMatch) {
-      setSelectedAssignment(localMatch);
-      setDuplicateSourceId("");
-      return;
-    }
-
     try {
       const res = await fetch(`/api/assignments/${assignmentId}`);
       if (!res.ok) throw new Error("Gagal mengambil detail assignment");
@@ -324,10 +317,7 @@ export default function ResultsTable({
                             </Button>
                           )}
                           <Button
-                            onClick={() => {
-                              setSelectedAssignment(assignment);
-                              setDuplicateSourceId("");
-                            }}
+                            onClick={() => openAssignmentById(assignment.id)}
                             variant="ghost"
                             size="sm"
                             className="h-8 text-zinc-350 hover:text-white hover:bg-zinc-800"
@@ -521,6 +511,21 @@ export default function ResultsTable({
                       >
                         {selectedAssignment.duplicateOf.studentName}
                       </button>
+                      {selectedAssignment.duplicateOf.extractedText && (
+                        <div className="mt-2 pt-1 border-t border-amber-500/10">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = document.getElementById("side-by-side-comparison");
+                              el?.scrollIntoView({ behavior: "smooth" });
+                            }}
+                            className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors"
+                          >
+                            <span>Lihat Perbandingan Teks Berdampingan</span>
+                            <span className="text-[10px]">↓</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                   {selectedAssignment.duplicates && selectedAssignment.duplicates.length > 0 && (
@@ -690,7 +695,7 @@ export default function ResultsTable({
               {selectedAssignment.extractedText && (
                 <div className="space-y-4">
                   {selectedAssignment.duplicateOf && selectedAssignment.duplicateOf.extractedText ? (
-                    <div className="space-y-2">
+                    <div id="side-by-side-comparison" className="space-y-2 scroll-mt-6">
                       <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                         Perbandingan Teks (Side-by-Side)
                       </h4>
