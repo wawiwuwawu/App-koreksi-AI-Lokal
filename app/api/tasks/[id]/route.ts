@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { queueService } from "@/services/queueService";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +16,9 @@ export async function GET(
     const pageSizeRaw = parseInt(url.searchParams.get("pageSize") || "25", 10);
     const pageSize = Math.min(Math.max(pageSizeRaw, 1), 100);
     const skip = (page - 1) * pageSize;
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    const sessionId = getSessionId(req);
+    if (!sessionId) {
+      return unauthorizedResponse();
     }
 
     const task = await prisma.task.findUnique({
@@ -36,7 +37,7 @@ export async function GET(
     }
 
     // Security: Ensure task belongs to the logged-in lecturer
-    if (task.class.course.lecturerId !== session) {
+    if (task.class.course.lecturerId !== sessionId) {
       return NextResponse.json({ error: "Unauthorized access to this task" }, { status: 403 });
     }
 
@@ -112,9 +113,9 @@ export async function PUT(
 ) {
   try {
     const { id: taskId } = await params;
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    const sessionId = getSessionId(req);
+    if (!sessionId) {
+      return unauthorizedResponse();
     }
 
     const body = await req.json();
@@ -143,7 +144,7 @@ export async function PUT(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    if (task.class.course.lecturerId !== session) {
+    if (task.class.course.lecturerId !== sessionId) {
       return NextResponse.json({ error: "Unauthorized access to this task" }, { status: 403 });
     }
 
