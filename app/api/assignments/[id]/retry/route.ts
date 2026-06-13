@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 import { queueService } from "@/services/queueService";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

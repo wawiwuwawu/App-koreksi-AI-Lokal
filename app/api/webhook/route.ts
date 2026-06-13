@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { WebhookPayload } from "@/types";
 import { queueService } from "@/services/queueService";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   // 1. Authenticate webhook request via secret token if configured
   const secretHeader = req.headers.get("x-webhook-secret");
