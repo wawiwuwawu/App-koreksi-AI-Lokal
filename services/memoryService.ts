@@ -29,13 +29,23 @@ export async function getSlidingWindowContext(limit: number, taskId: string): Pr
       return "Belum ada tugas terdahulu yang dinilai sebagai pembanding.";
     }
 
+    // Total character budget for the memory context (approx 2000-2500 tokens)
+    const TOTAL_CHAR_BUDGET = 8000;
+    const limitPerAssignment = Math.max(1000, Math.floor(TOTAL_CHAR_BUDGET / assignments.length));
+
     return assignments
       .map((ass, index) => {
+        // Clean up excessive whitespace to save tokens
+        const cleanedText = ass.extractedText
+          .replace(/[ \t]+/g, " ")
+          .replace(/\n\s*\n+/g, "\n")
+          .trim();
+
         // Truncate comparison text to prevent overloading the local LLM's context window
         const truncatedText =
-          ass.extractedText.length > 3000
-            ? ass.extractedText.substring(0, 3000) + "... [teks dipotong]"
-            : ass.extractedText;
+          cleanedText.length > limitPerAssignment
+            ? cleanedText.substring(0, limitPerAssignment) + "... [teks dipotong]"
+            : cleanedText;
 
         return `TUGAS PEMBANDING #${index + 1}:
 Nama Mahasiswa: ${ass.studentName}
