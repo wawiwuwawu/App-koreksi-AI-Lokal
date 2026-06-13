@@ -87,7 +87,7 @@ export async function GET(
       task,
       assignments,
       queueLength,
-      webhookSecret: process.env.WEBHOOK_SECRET || "",
+      webhookConfigured: !!process.env.WEBHOOK_SECRET,
       statusCounts,
       pagination: {
         page,

@@ -1,11 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 
-// Dynamic fetch to avoid build caching issues
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
+
     const url = new URL(req.url);
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
     const pageSizeRaw = parseInt(url.searchParams.get("pageSize") || "25", 10);
@@ -14,9 +17,16 @@ export async function GET(req: Request) {
 
     const [assignments, total] = await prisma.$transaction([
       prisma.assignment.findMany({
-        orderBy: {
-          createdAt: "desc",
+        where: {
+          task: {
+            class: {
+              course: {
+                lecturerId: sessionId,
+              },
+            },
+          },
         },
+        orderBy: { createdAt: "desc" },
         skip,
         take: pageSize,
         include: {
@@ -32,9 +42,25 @@ export async function GET(req: Request) {
               studentName: true,
             },
           },
+          task: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
         },
       }),
-      prisma.assignment.count(),
+      prisma.assignment.count({
+        where: {
+          task: {
+            class: {
+              course: {
+                lecturerId: sessionId,
+              },
+            },
+          },
+        },
+      }),
     ]);
 
     return NextResponse.json({

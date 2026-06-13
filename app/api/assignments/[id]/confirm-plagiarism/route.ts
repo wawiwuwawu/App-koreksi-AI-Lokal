@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
 
     const { id: assignmentId } = await params;
     const body = await req.json();
@@ -22,12 +21,24 @@ export async function POST(
     const assignment = await prisma.assignment.findUnique({
       where: { id: assignmentId },
       include: {
-        task: true,
+        task: {
+          include: {
+            class: {
+              include: {
+                course: true,
+              },
+            },
+          },
+        },
       },
     });
 
     if (!assignment) {
       return NextResponse.json({ error: "Assignment not found" }, { status: 404 });
+    }
+
+    if (assignment.task.class.course.lecturerId !== sessionId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     const updateData: any = {};
@@ -37,25 +48,37 @@ export async function POST(
       updateData.isDuplicate = true;
       updateData.score = duplicateScore;
       updateData.detectionSource = "ai-confirmed";
-      
-      // If a sourceId was passed or we already had one, ensure it is set
+
       const finalSourceId = sourceId || assignment.duplicateOfId;
       if (finalSourceId) {
         updateData.duplicateOfId = finalSourceId;
-      }
-      
-      // Also update the source assignment (bilateral penalty/notes if applicable)
-      if (finalSourceId) {
-        await prisma.assignment.update({
+
+        const sourceAssignment = await prisma.assignment.findUnique({
           where: { id: finalSourceId },
-          data: {
-            score: duplicateScore,
-            plagiarismNote: `Nilai disamakan karena duplikat dengan ${assignment.studentName} (AI Dikonfirmasi).`,
+          include: {
+            task: {
+              include: {
+                class: {
+                  include: {
+                    course: true,
+                  },
+                },
+              },
+            },
           },
         });
+
+        if (sourceAssignment && sourceAssignment.task.class.course.lecturerId === sessionId) {
+          await prisma.assignment.update({
+            where: { id: finalSourceId },
+            data: {
+              score: duplicateScore,
+              plagiarismNote: `Nilai disamakan karena duplikat dengan ${assignment.studentName} (AI Dikonfirmasi).`,
+            },
+          });
+        }
       }
     } else {
-      // action === "dismiss"
       updateData.detectionSource = null;
       updateData.plagiarismNote = null;
       updateData.isDuplicate = false;

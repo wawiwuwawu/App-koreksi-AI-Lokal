@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import * as crypto from "crypto";
-
-function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password).digest("hex");
-}
+import { hashPassword, createSessionCookie } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,9 +13,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: "Password minimal 6 karakter" },
+        { status: 400 }
+      );
+    }
+
     const trimmedEmail = email.trim().toLowerCase();
 
-    // Check if email already exists
     const existing = await prisma.lecturer.findUnique({
       where: { email: trimmedEmail },
     });
@@ -31,16 +33,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create the lecturer
     const lecturer = await prisma.lecturer.create({
       data: {
         name: name.trim(),
         email: trimmedEmail,
-        password: hashPassword(password),
+        password: await hashPassword(password),
       },
     });
 
-    // Set simple cookie to automatically log them in
     const response = NextResponse.json({
       success: true,
       lecturer: {
@@ -50,18 +50,12 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    response.cookies.set("lecturer_session", lecturer.id, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24, // 1 day
-    });
+    response.cookies.set(createSessionCookie(lecturer.id));
 
     return response;
-  } catch (error: any) {
-    console.error("[Register POST] Error:", error);
+  } catch {
     return NextResponse.json(
-      { error: "Terjadi kesalahan server", details: error?.message || String(error) },
+      { error: "Terjadi kesalahan server" },
       { status: 500 }
     );
   }

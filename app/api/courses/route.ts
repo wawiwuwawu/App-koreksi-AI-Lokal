@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
 
     const url = new URL(req.url);
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
@@ -18,7 +17,7 @@ export async function GET(req: NextRequest) {
 
     const [courses, totalCourses, totalClasses, totalTasks] = await prisma.$transaction([
       prisma.course.findMany({
-        where: { lecturerId: session },
+        where: { lecturerId: sessionId },
         include: {
           classes: {
             include: {
@@ -35,16 +34,16 @@ export async function GET(req: NextRequest) {
         skip,
         take: pageSize,
       }),
-      prisma.course.count({ where: { lecturerId: session } }),
+      prisma.course.count({ where: { lecturerId: sessionId } }),
       prisma.class.count({
         where: {
-          course: { lecturerId: session },
+          course: { lecturerId: sessionId },
         },
       }),
       prisma.task.count({
         where: {
           class: {
-            course: { lecturerId: session },
+            course: { lecturerId: sessionId },
           },
         },
       }),
@@ -74,10 +73,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
 
     const { code, name } = await req.json();
 
@@ -89,7 +86,7 @@ export async function POST(req: NextRequest) {
       data: {
         code: code.trim().toUpperCase(),
         name: name.trim(),
-        lecturerId: session,
+        lecturerId: sessionId,
       },
     });
 
@@ -102,4 +99,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

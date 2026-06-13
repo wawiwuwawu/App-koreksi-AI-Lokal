@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
+
     const { id: taskId } = await params;
 
     const task = await prisma.task.findUnique({
@@ -23,6 +27,10 @@ export async function GET(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
+    if (task.class.course.lecturerId !== sessionId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
     const assignments = await prisma.assignment.findMany({
       where: { taskId },
       orderBy: { studentName: "asc" },
@@ -35,14 +43,12 @@ export async function GET(
       },
     });
 
-    // Helper to sanitize CSV fields (escape quotes, wrap in quotes)
     const escapeCSV = (val: any) => {
       if (val === null || val === undefined) return "";
       let str = String(val).replace(/"/g, '""');
       return `"${str}"`;
     };
 
-    // Header row
     const headers = [
       "Nama Mahasiswa",
       "Nilai",
@@ -54,7 +60,7 @@ export async function GET(
       "Feedback AI",
       "Catatan Plagiarisme",
       "Google Drive URL",
-      "Tanggal Submit"
+      "Tanggal Submit",
     ];
 
     const csvRows = [headers.join(",")];
@@ -66,18 +72,17 @@ export async function GET(
         escapeCSV(ass.status),
         escapeCSV(ass.isDuplicate ? "Ya" : "Tidak"),
         escapeCSV(ass.duplicateReason || "-"),
-        escapeCSV(ass.duplicateSimilarity !== null ? `${(ass.duplicateSimilarity * 100).toFixed(1)}%` : "-"), // fixed calculation representation
+        escapeCSV(ass.duplicateSimilarity !== null ? `${(ass.duplicateSimilarity * 100).toFixed(1)}%` : "-"),
         escapeCSV(ass.duplicateOf?.studentName || "-"),
         escapeCSV(ass.feedback),
         escapeCSV(ass.plagiarismNote),
         escapeCSV(ass.driveFileUrl),
-        escapeCSV(ass.createdAt.toISOString())
+        escapeCSV(ass.createdAt.toISOString()),
       ];
       csvRows.push(row.join(","));
     }
 
-    const csvContent = "\uFEFF" + csvRows.join("\n"); // Add BOM for UTF-8 compatibility in Excel
-
+    const csvContent = "\uFEFF" + csvRows.join("\n");
     const safeTitle = task.title.replace(/[^a-zA-Z0-9]/g, "_");
     const filename = `Nilai_${safeTitle}_${task.class.name}.csv`;
 

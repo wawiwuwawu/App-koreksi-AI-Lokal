@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { PrismaClient } from "../generated/prisma/client";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import * as crypto from "crypto";
+import bcrypt from "bcryptjs";
 
 function createPrismaClient() {
   const url = new URL(process.env.DATABASE_URL || "mysql://root:@localhost:3306/grading_app");
@@ -17,10 +17,6 @@ function createPrismaClient() {
 }
 
 const prisma = createPrismaClient();
-
-function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password).digest("hex");
-}
 
 async function main() {
   // 1. Seed SystemConfig (fallback)
@@ -46,7 +42,7 @@ Total skor: 0-100`,
     create: {
       name: "Dr. Budi Santoso",
       email: "dosen@example.com",
-      password: hashPassword("password123"),
+      password: await bcrypt.hash("password123", 12),
     },
   });
 

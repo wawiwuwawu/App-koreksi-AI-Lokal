@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 import { queueService } from "@/services/queueService";
 
 export async function POST(
@@ -7,17 +8,34 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
+
     const { id: assignmentId } = await params;
 
     const assignment = await prisma.assignment.findUnique({
       where: { id: assignmentId },
+      include: {
+        task: {
+          include: {
+            class: {
+              include: {
+                course: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!assignment) {
       return NextResponse.json({ error: "Assignment not found" }, { status: 404 });
     }
 
-    // Reset status to pending and clear error/grading outputs
+    if (assignment.task.class.course.lecturerId !== sessionId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
     const updated = await prisma.assignment.update({
       where: { id: assignmentId },
       data: {
@@ -29,7 +47,6 @@ export async function POST(
       },
     });
 
-    // Enqueue
     queueService.enqueue(assignmentId);
 
     return NextResponse.json({

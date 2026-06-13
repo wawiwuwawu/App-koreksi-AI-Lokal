@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
 
     const { id: taskId } = await params;
 
@@ -28,11 +27,10 @@ export async function POST(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    if (task.class.course.lecturerId !== session) {
+    if (task.class.course.lecturerId !== sessionId) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
     }
 
-    // 1. Fetch all assignments in this task, ordered by creation (oldest first)
     const assignments = await prisma.assignment.findMany({
       where: { taskId, status: "done" },
       orderBy: { createdAt: "asc" },
@@ -42,7 +40,6 @@ export async function POST(
     let resetCount = 0;
     let newDuplicateCount = 0;
 
-    // Helper to normalize text
     const normalizeText = (txt: string) => {
       return txt
         .toLowerCase()
@@ -51,7 +48,6 @@ export async function POST(
         .trim();
     };
 
-    // Helper to parse image hashes JSON safely
     const parseImageHashes = (str: string | null): string[] => {
       if (!str) return [];
       try {
@@ -65,11 +61,8 @@ export async function POST(
       }
     };
 
-    // 2. Perform sequential duplicate scanning
     for (let i = 0; i < assignments.length; i++) {
       const current = assignments[i];
-
-      // Check if this assignment matches any prior assignments in the sequence
       const priorAssignments = assignments.slice(0, i);
       let duplicateCandidate: { id: string; studentName: string; reason: string; similarity: number } | null = null;
 
@@ -77,8 +70,7 @@ export async function POST(
         const normalizedTokens = normalizeText(current.extractedText)
           .split(" ")
           .filter((token) => token.length > 2);
-        
-        // Build current shingles
+
         const currentShingles = new Set<string>();
         for (let j = 0; j <= normalizedTokens.length - 5; j++) {
           currentShingles.add(normalizedTokens.slice(j, j + 5).join(" "));
@@ -87,13 +79,11 @@ export async function POST(
         const imageHashes = parseImageHashes(current.imageHashes);
 
         for (const prior of priorAssignments) {
-          // 1. Identical text hash
           if (prior.textHash && prior.textHash === current.textHash) {
             duplicateCandidate = { id: prior.id, studentName: prior.studentName, reason: "text-identical", similarity: 1 };
             break;
           }
 
-          // 2. Compute similarity for Jaccard and image combination
           const priorTokens = normalizeText(prior.extractedText)
             .split(" ")
             .filter((token) => token.length > 2);
@@ -111,7 +101,6 @@ export async function POST(
           const unionSize = currentShingles.size + priorShingles.size - intersectionSize;
           const similarity = unionSize > 0 ? intersectionSize / unionSize : 0;
 
-          // 3. Image match
           const priorImageHashes = parseImageHashes(prior.imageHashes);
           const matchingImagesCount = imageHashes.filter((hash: string) =>
             priorImageHashes.includes(hash)
@@ -125,7 +114,6 @@ export async function POST(
             break;
           }
 
-          // Lowered Jaccard threshold to 0.7
           if (similarity >= 0.7) {
             duplicateCandidate = { id: prior.id, studentName: prior.studentName, reason: "text-similarity", similarity };
             break;
@@ -136,7 +124,7 @@ export async function POST(
       if (duplicateCandidate) {
         newDuplicateCount++;
         const duplicateNote = `Duplikat terdeteksi (${duplicateCandidate.reason}) dengan ${duplicateCandidate.studentName}. Nilai disamakan menjadi ${duplicateScore}.`;
-        
+
         await prisma.$transaction([
           prisma.assignment.update({
             where: { id: current.id },
@@ -158,7 +146,6 @@ export async function POST(
           }),
         ]);
       } else {
-        // If it was marked duplicate automatically but no longer matches, reset it
         if (current.isDuplicate && current.duplicateReason !== "manual") {
           resetCount++;
           await prisma.assignment.update({

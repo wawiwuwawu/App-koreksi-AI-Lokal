@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
 
     const { id: assignmentId } = await params;
 
@@ -45,7 +44,7 @@ export async function GET(
       return NextResponse.json({ error: "Assignment not found" }, { status: 404 });
     }
 
-    if (assignment.task.class.course.lecturerId !== session) {
+    if (assignment.task.class.course.lecturerId !== sessionId) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
     }
 
@@ -64,14 +63,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
 
     const { id: assignmentId } = await params;
 
-    // Check ownership
     const assignment = await prisma.assignment.findUnique({
       where: { id: assignmentId },
       include: {
@@ -91,11 +87,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Assignment not found" }, { status: 404 });
     }
 
-    if (assignment.task.class.course.lecturerId !== session) {
+    if (assignment.task.class.course.lecturerId !== sessionId) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
     }
 
-    // Safely delete within transaction to prevent foreign key errors
     await prisma.$transaction([
       prisma.assignment.updateMany({
         where: { duplicateOfId: assignmentId },
@@ -129,10 +124,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
 
     const { id: assignmentId } = await params;
     const body = await req.json();
@@ -157,7 +150,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Assignment not found" }, { status: 404 });
     }
 
-    if (assignment.task.class.course.lecturerId !== session) {
+    if (assignment.task.class.course.lecturerId !== sessionId) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
     }
 

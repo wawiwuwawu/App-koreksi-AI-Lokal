@@ -262,7 +262,7 @@ export async function findDuplicateCandidate(params: {
         reason: "text-identical",
         similarity: 1,
       };
-      continue;
+      return best;
     }
 
     const candidateTokens = normalizeText(candidate.extractedText)

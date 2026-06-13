@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
 
     const { id, title, rubric, windowSize, classId, duplicateScore } = await req.json();
 
@@ -14,12 +13,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Judul tugas dan kelas wajib diisi" }, { status: 400 });
     }
 
-    // Verify class belongs to lecturer's course
     const clazz = await prisma.class.findFirst({
       where: {
         id: classId,
         course: {
-          lecturerId: session,
+          lecturerId: sessionId,
         },
       },
     });
@@ -28,10 +26,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Kelas tidak ditemukan atau tidak sah" }, { status: 404 });
     }
 
-    // Check if task ID is custom or auto-generate
     const taskId = id && id.trim() !== "" ? id.trim() : `TASK-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-    // Verify unique Task ID
     const existingTask = await prisma.task.findUnique({
       where: { id: taskId },
     });

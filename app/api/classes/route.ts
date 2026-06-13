@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
 
     const { name, courseId } = await req.json();
 
@@ -14,9 +13,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Nama kelas dan mata kuliah wajib diisi" }, { status: 400 });
     }
 
-    // Verify course belongs to lecturer
     const course = await prisma.course.findFirst({
-      where: { id: courseId, lecturerId: session },
+      where: { id: courseId, lecturerId: sessionId },
     });
 
     if (!course) {

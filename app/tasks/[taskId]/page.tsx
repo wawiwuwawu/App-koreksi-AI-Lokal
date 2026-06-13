@@ -42,7 +42,7 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
   const [rubric, setRubric] = useState("");
   const [windowSize, setWindowSize] = useState(3);
   const [duplicateScore, setDuplicateScore] = useState(50);
-  const [webhookSecret, setWebhookSecret] = useState("");
+  const [webhookConfigured, setWebhookConfigured] = useState(false);
 
   const [healthStatus, setHealthStatus] = useState<"connected" | "disconnected" | "checking">("checking");
   const [healthError, setHealthError] = useState<string | null>(null);
@@ -88,8 +88,8 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
       if (data.statusCounts) {
         setStatusCounts(data.statusCounts);
       }
-      if (data.webhookSecret) {
-        setWebhookSecret(data.webhookSecret);
+      if (data.webhookConfigured !== undefined) {
+        setWebhookConfigured(data.webhookConfigured);
       }
     } catch (err: any) {
       toast.error(err?.message || "Gagal memuat tugas.");
@@ -312,7 +312,7 @@ export default function TaskDetailPage({ params }: TaskPageProps) {
               onRefresh={fetchTaskData}
               isLoading={isLoading}
               taskId={taskId}
-              webhookSecret={webhookSecret}
+              webhookSecret={webhookConfigured ? "TERSEDIA" : ""}
               statusCounts={statusCounts}
             />
 

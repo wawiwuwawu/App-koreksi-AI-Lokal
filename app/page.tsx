@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { BookOpen, Users, FileText, ChevronRight, LogOut, Plus, Trash2 } from "lucide-react";
+import { BookOpen, Users, FileText, ChevronRight, LogOut, Settings, Plus, Trash2 } from "lucide-react";
 
 interface TaskSummary {
   id: string;
@@ -291,7 +291,16 @@ export default function DashboardPage() {
               )}
             </div>
             <div className="text-sm text-zinc-300 font-medium border-l border-zinc-800 pl-4 flex items-center gap-2">
-              <span>{lecturer.name}</span>
+              <span className="hidden sm:inline">{lecturer.name}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-full cursor-pointer"
+                onClick={() => router.push("/settings")}
+                title="Pengaturan"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"

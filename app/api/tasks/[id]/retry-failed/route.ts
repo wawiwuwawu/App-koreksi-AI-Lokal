@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { queueService } from "@/services/queueService";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
 
     const { id: taskId } = await params;
 
@@ -29,7 +28,7 @@ export async function POST(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    if (task.class.course.lecturerId !== session) {
+    if (task.class.course.lecturerId !== sessionId) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
     }
 

@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionId, unauthorizedResponse } from "@/lib/auth";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = req.cookies.get("lecturer_session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const sessionId = getSessionId(req);
+    if (!sessionId) return unauthorizedResponse();
 
     const { id: assignmentId } = await params;
     const { sourceId } = await req.json();
@@ -40,7 +39,15 @@ export async function POST(
       prisma.assignment.findUnique({
         where: { id: sourceId },
         include: {
-          task: true,
+          task: {
+            include: {
+              class: {
+                include: {
+                  course: true,
+                },
+              },
+            },
+          },
         },
       }),
     ]);
@@ -49,8 +56,12 @@ export async function POST(
       return NextResponse.json({ error: "Assignment tidak ditemukan" }, { status: 404 });
     }
 
-    if (target.task.class.course.lecturerId !== session) {
+    if (target.task.class.course.lecturerId !== sessionId) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
+    }
+
+    if (source.task.class.course.lecturerId !== sessionId) {
+      return NextResponse.json({ error: "Source assignment tidak sah" }, { status: 403 });
     }
 
     if (target.taskId !== source.taskId) {
