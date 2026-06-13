@@ -5,7 +5,11 @@ WORKDIR /app
 
 # Salin package.json & package-lock.json
 COPY package.json package-lock.json ./
-RUN npm ci && npm install --no-save @napi-rs/canvas-linux-x64-musl@1.0.0 @napi-rs/canvas-linux-arm64-musl@1.0.0 --force
+RUN npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm ci && \
+    npm install --no-save @napi-rs/canvas-linux-x64-musl@1.0.0 @napi-rs/canvas-linux-arm64-musl@1.0.0 --force
 
 # Stage 2: Build Aplikasi Next.js
 FROM node:22-alpine AS builder
